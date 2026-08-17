@@ -4,7 +4,7 @@ import argparse
 import math
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import matplotlib
 
@@ -46,6 +46,22 @@ def midpoint_frame_index(frame_count: int) -> int:
     if frame_count < 1:
         raise ValueError("At least one frame is required.")
     return (frame_count - 1) // 2
+
+
+def panel_grid_shape(
+    panel_count: int,
+    columns: Optional[int] = None,
+) -> Tuple[int, int]:
+    """Return a compact grid, using one row when columns is not specified."""
+    if panel_count < 1:
+        raise ValueError("At least one panel is required.")
+    if columns is None:
+        columns = panel_count
+    if columns < 1:
+        raise ValueError("The column count must be positive.")
+    columns = min(columns, panel_count)
+    rows = math.ceil(panel_count / columns)
+    return rows, columns
 
 
 def resolve_tau_runs(
@@ -125,24 +141,30 @@ def save_comparison(
     x_limits: Tuple[float, float],
     y_limits: Tuple[float, float],
     colormap: str,
+    columns: Optional[int],
     dpi: int,
 ) -> None:
-    """Render one horizontally aligned, shared-scale vorticity comparison."""
-    figure, axes = plt.subplots(
-        1,
-        len(panels),
-        figsize=(5.4 * len(panels) + 0.8, 4.4),
+    """Render a shared-scale vorticity comparison in the requested grid."""
+    rows, columns = panel_grid_shape(len(panels), columns)
+    figure, axes_grid = plt.subplots(
+        rows,
+        columns,
+        figsize=(5.4 * columns + 0.8, 4.4 * rows),
         sharex=True,
         sharey=True,
+        squeeze=False,
         layout="constrained",
     )
-    axes = np.atleast_1d(axes)
+    axes = axes_grid.ravel()
+    active_axes = axes[:len(panels)]
+    for axis in axes[len(panels):]:
+        axis.set_visible(False)
     normalization = Normalize(vmin=-color_limit, vmax=color_limit)
     positive_levels = np.asarray(contour_magnitudes, dtype=float)
     negative_levels = -positive_levels[::-1]
     image = None
 
-    for panel_index, (axis, panel) in enumerate(zip(axes, panels)):
+    for panel_index, (axis, panel) in enumerate(zip(active_axes, panels)):
         frame = panel["frame"]
         omega = np.ma.masked_invalid(np.asarray(frame["vorticity"], dtype=float))
         image = axis.imshow(
@@ -179,10 +201,10 @@ def save_comparison(
         axis.set_xlim(*x_limits)
         axis.set_ylim(*y_limits)
         axis.set_xlabel("x")
-        if panel_index == 0:
+        if panel_index % columns == 0:
             axis.set_ylabel("y")
 
-    axes[0].legend(
+    active_axes[0].legend(
         handles=[
             Line2D([0], [0], color="black", linewidth=0.9, label=r"$\omega>0$"),
             Line2D(
@@ -198,7 +220,7 @@ def save_comparison(
         framealpha=0.9,
     )
     figure.suptitle("Midpoint vorticity fields and absolute-vorticity contours")
-    colorbar = figure.colorbar(image, ax=axes.tolist(), pad=0.02, shrink=0.92)
+    colorbar = figure.colorbar(image, ax=active_axes.tolist(), pad=0.02, shrink=0.92)
     colorbar.set_label(r"vorticity $\omega$")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output_path, dpi=dpi)
@@ -207,7 +229,7 @@ def save_comparison(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Plot selected tau-sweep midpoint vorticity fields in one row."
+        description="Plot selected tau-sweep midpoint vorticity fields in a shared grid."
     )
     parser.add_argument("campaign_dir", type=Path)
     parser.add_argument("config_file", type=Path)
@@ -223,6 +245,11 @@ def main() -> int:
     parser.add_argument("--y-limits", nargs=2, type=float, default=(-1.5, 1.5))
     parser.add_argument("--colormap", default="RdBu_r")
     parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument(
+        "--columns",
+        type=int,
+        help="Number of panel columns; defaults to one horizontal row.",
+    )
     parser.add_argument("--dpi", type=int, default=200)
     parser.add_argument(
         "--output",
@@ -248,6 +275,8 @@ def main() -> int:
         parser.error("Every contour magnitude must be smaller than --color-limit")
     if args.workers < 1:
         parser.error("--workers must be positive")
+    if args.columns is not None and args.columns < 1:
+        parser.error("--columns must be positive")
     if args.dpi < 1:
         parser.error("--dpi must be positive")
     if not all(math.isfinite(value) for value in (*args.x_limits, *args.y_limits)):
@@ -277,6 +306,7 @@ def main() -> int:
         x_limits=tuple(args.x_limits),
         y_limits=tuple(args.y_limits),
         colormap=args.colormap,
+        columns=args.columns,
         dpi=args.dpi,
     )
 

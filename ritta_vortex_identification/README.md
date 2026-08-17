@@ -76,7 +76,7 @@ python plot_tau_midpoint_vorticity.py ../runs/ns_amr_lgf2D/tau_sweep configs/def
 This uses a shared symmetric color scale, positive solid contours, and negative
 dashed contours. It chooses the lower central snapshot to match the existing
 beginning/middle/end preview convention. No vortex-identification stage is
-needed.
+needed. Add `--columns 2` to arrange four selected tau cases as a 2-by-2 grid.
 
 To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
 

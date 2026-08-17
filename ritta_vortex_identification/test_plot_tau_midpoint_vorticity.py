@@ -6,7 +6,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from plot_tau_midpoint_vorticity import midpoint_frame_index, validate_positive_values
+from plot_tau_midpoint_vorticity import (
+    midpoint_frame_index,
+    panel_grid_shape,
+    validate_positive_values,
+)
 
 
 class MidpointFrameIndexTests(unittest.TestCase):
@@ -35,6 +39,21 @@ class ValidatePositiveValuesTests(unittest.TestCase):
     def test_rejects_nonpositive_values(self):
         with self.assertRaisesRegex(ValueError, "positive finite"):
             validate_positive_values([0.0, 1.0], "levels")
+
+
+class PanelGridShapeTests(unittest.TestCase):
+    def test_defaults_to_one_horizontal_row(self):
+        self.assertEqual(panel_grid_shape(4), (1, 4))
+
+    def test_builds_two_by_two_grid(self):
+        self.assertEqual(panel_grid_shape(4, 2), (2, 2))
+
+    def test_caps_columns_at_panel_count(self):
+        self.assertEqual(panel_grid_shape(3, 5), (1, 3))
+
+    def test_rejects_nonpositive_columns(self):
+        with self.assertRaisesRegex(ValueError, "positive"):
+            panel_grid_shape(4, 0)
 
 
 if __name__ == "__main__":

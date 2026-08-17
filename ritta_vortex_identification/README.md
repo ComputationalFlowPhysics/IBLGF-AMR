@@ -64,6 +64,20 @@ python stack_combined_previews.py stacked.png \
   --row "Re = 1800" re_1800_fits_combined.png
 ```
 
+To compare only the midpoint vorticity fields from selected tau-sweep runs in
+one horizontal figure, read the original simulation output directly with:
+
+```bash
+python plot_tau_midpoint_vorticity.py ../runs/ns_amr_lgf2D/tau_sweep configs/default.toml \
+  --taus 1 8 30 --workers 3 --color-limit 12 \
+  --contour-magnitudes 0.35 1 2 4 8
+```
+
+This uses a shared symmetric color scale, positive solid contours, and negative
+dashed contours. It chooses the lower central snapshot to match the existing
+beginning/middle/end preview convention. No vortex-identification stage is
+needed.
+
 To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
 
 ```bash

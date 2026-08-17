@@ -9,18 +9,19 @@ comparison_script="${script_dir}/plot_resolution_comparison.py"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") SWEEP_FOLDER [STRIDE] [CENTER_THRESHOLD_FRACTION] [LEGEND_BY] [VORTICITY_THRESHOLD_FRACTION] [MPI_RANKS]
+  $(basename "$0") SWEEP_FOLDER [STRIDE] [CENTER_THRESHOLD_FRACTION] [LEGEND_BY] [VORTICITY_THRESHOLD_FRACTION] [CASE_WORKERS]
 
 Examples:
   $(basename "$0") runs/ns_amr_lgf/res_sweep 1 0.4
-  $(basename "$0") runs/ns_amr_lgf/formation 1 0.4 tau 0.02 128
+  $(basename "$0") runs/ns_amr_lgf/formation 1 0.4 tau 0.02 6
 
 Existing leading_vortex_circulation.csv files are reused. ParaView analysis is
 run only for cases whose CSV is missing. LEGEND_BY is resolution (default) or
 tau. VORTICITY_THRESHOLD_FRACTION defaults to the paper's 0.02 cutoff;
 CENTER_THRESHOLD_FRACTION independently controls the Lamb-center calculation.
-MPI_RANKS defaults to PARAVIEW_MPI_RANKS or 1. Analysis-only mode skips slice
-frames and GIFs, and campaign-qualified output folders avoid name collisions.
+CASE_WORKERS defaults to PARAVIEW_CASE_WORKERS or 1 and runs independent cases
+concurrently. Analysis-only mode skips slice frames and GIFs, and
+campaign-qualified output folders avoid name collisions.
 EOF
 }
 
@@ -38,7 +39,7 @@ stride="${2:-1}"
 center_threshold_fraction="${3:-0.4}"
 legend_by="${4:-resolution}"
 vorticity_threshold_fraction="${5:-0.02}"
-mpi_ranks="${6:-${PARAVIEW_MPI_RANKS:-1}}"
+case_workers="${6:-${PARAVIEW_CASE_WORKERS:-1}}"
 
 if [[ ! "$stride" =~ ^[1-9][0-9]*$ ]]; then
   echo "Error: stride must be a positive integer." >&2
@@ -48,12 +49,34 @@ if [[ "$legend_by" != "resolution" && "$legend_by" != "tau" ]]; then
   echo "Error: LEGEND_BY must be resolution or tau." >&2
   exit 1
 fi
-if [[ ! "$mpi_ranks" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Error: MPI_RANKS must be a positive integer." >&2
+if [[ ! "$case_workers" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Error: CASE_WORKERS must be a positive integer." >&2
   exit 1
 fi
 
 sweep_name="$(basename "$sweep_folder")"
+analysis_pids=()
+analysis_names=()
+analysis_logs=()
+
+wait_for_batch() {
+  local index
+  local failed=0
+  for index in "${!analysis_pids[@]}"; do
+    if wait "${analysis_pids[$index]}"; then
+      echo "[${analysis_names[$index]}] Analysis completed."
+    else
+      echo "[${analysis_names[$index]}] Analysis failed." >&2
+      echo "Log: ${analysis_logs[$index]}" >&2
+      tail -n 40 "${analysis_logs[$index]}" >&2 || true
+      failed=1
+    fi
+  done
+  analysis_pids=()
+  analysis_names=()
+  analysis_logs=()
+  return "$failed"
+}
 
 shopt -s nullglob
 run_count=0
@@ -116,7 +139,7 @@ raise SystemExit(0 if matches else 1)
     if ! grep -Fq "$run_folder/output/" "$csv_path"; then
       echo "[$run_name] Existing CSV belongs to another run; recalculating it."
     else
-      echo "[$run_name] Existing CSV uses a different vorticity threshold; recalculating it."
+      echo "[$run_name] Existing CSV is incomplete or incompatible; recalculating it."
     fi
   fi
 
@@ -135,20 +158,34 @@ raise SystemExit(0 if matches else 1)
     fi
   fi
 
-  echo "[$run_name] Running ParaView circulation analysis."
-  PARAVIEW_MPI_RANKS="$mpi_ranks" "$analysis_script" \
+  mkdir -p "$case_output"
+  analysis_log="$case_output/analysis.log"
+  echo "[$run_name] Starting ParaView analysis; log: $analysis_log"
+  "$analysis_script" \
     "$run_folder" \
     "$stride" \
     --data-only \
     --output-dir "$case_output" \
     --vorticity-threshold-fraction "$vorticity_threshold_fraction" \
     --center-threshold-fraction "$center_threshold_fraction" \
-    "${config_args[@]}"
+    "${config_args[@]}" \
+    >"$analysis_log" 2>&1 &
+  analysis_pids+=("$!")
+  analysis_names+=("$run_name")
+  analysis_logs+=("$analysis_log")
+
+  if [[ ${#analysis_pids[@]} -ge $case_workers ]]; then
+    wait_for_batch
+  fi
 done
 
 if [[ $run_count -eq 0 ]]; then
   echo "Error: no child runs with output/flowTime_*.hdf5 were found in $sweep_folder" >&2
   exit 1
+fi
+
+if [[ ${#analysis_pids[@]} -gt 0 ]]; then
+  wait_for_batch
 fi
 
 if ! python -c 'import matplotlib' 2>/dev/null; then

@@ -80,6 +80,10 @@ needed. Add `--columns 2` to arrange four selected tau cases as a 2-by-2 grid.
 Use `--frame-fraction 0.9` to compare frames near 90 percent of each saved
 sequence instead of the midpoint; the exact selected filenames and physical
 times are printed.
+For late-time fields with a wide dynamic range, use
+`--color-scale symlog --symlog-linthresh 0.35`. This preserves a shared scale
+while making weak tails more visible; zero remains centered and the scale is
+linear between -0.35 and 0.35.
 
 To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
 
@@ -154,6 +158,10 @@ This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`.
 For `fits.h5`, each frame displays only the successful fit with the largest
 finite boundary radius. Output goes beside the HDF5 file in
 `<name>_stride_<stride>/`.
+Add `--workers N` to render independent PNG frames concurrently before the GIF
+is assembled in numerical frame order. On a 128-core compute node, a smaller
+render pool such as `--workers 32` avoids excessive simultaneous HDF5 opens on
+the shared filesystem.
 Use `--x-axis-min VALUE` and `--x-axis-max VALUE` to override the saved x-axis
 limits for the rendered frames.
 For `threshold_masks.h5`, use `--threshold-vorticity-background` to replace

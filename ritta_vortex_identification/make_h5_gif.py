@@ -2,6 +2,7 @@
 
 import argparse
 import math
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import List, Optional
 
@@ -212,6 +213,51 @@ def render_frame(
     plt.close(figure)
 
 
+def render_frame_from_files(task) -> Path:
+    """Open independent HDF5 handles and render one frame in a worker."""
+    (
+        output_path,
+        input_path,
+        background_path,
+        expected_schema,
+        group_name,
+        threshold_vorticity_background,
+        x_axis_min,
+        x_axis_max,
+    ) = task
+    with h5py.File(input_path, "r") as handle:
+        schema = text_value(handle.attrs.get("schema", ""))
+        if schema != expected_schema:
+            raise ValueError(
+                f"HDF5 schema changed while rendering: {schema!r} != "
+                f"{expected_schema!r}"
+            )
+        config = saved_config(handle)
+        if x_axis_min is not None:
+            config["plot"]["x_axis_min"] = x_axis_min
+        if x_axis_max is not None:
+            config["plot"]["x_axis_max"] = x_axis_max
+        background = (
+            h5py.File(background_path, "r")
+            if background_path is not None
+            else None
+        )
+        try:
+            render_frame(
+                output_path,
+                schema,
+                handle,
+                background,
+                group_name,
+                config,
+                threshold_vorticity_background,
+            )
+        finally:
+            if background is not None:
+                background.close()
+    return output_path
+
+
 def save_gif(frame_paths: List[Path], output_path: Path, duration_ms: int) -> None:
     """Load the generated PNG files and save a looping GIF."""
     images = []
@@ -234,6 +280,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Render vortex-analysis HDF5 output to PNG frames and a GIF.")
     parser.add_argument("h5_file", type=Path)
     parser.add_argument("stride", type=int)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Render this many independent PNG frames concurrently (default: 1).",
+    )
     parser.add_argument("--duration-ms", type=int, default=150, help="Display time per GIF frame.")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--x-axis-min", type=float, help="Override the saved plot's lower x-axis limit.")
@@ -249,6 +301,8 @@ def main() -> int:
         parser.error("stride must be a positive integer")
     if args.duration_ms <= 0:
         parser.error("--duration-ms must be a positive integer")
+    if args.workers <= 0:
+        parser.error("--workers must be a positive integer")
     if args.x_axis_min is not None and not math.isfinite(args.x_axis_min):
         parser.error("--x-axis-min must be finite")
     if args.x_axis_max is not None and not math.isfinite(args.x_axis_max):
@@ -264,6 +318,8 @@ def main() -> int:
     frame_folder = output_folder / "frames"
     frame_folder.mkdir(parents=True, exist_ok=True)
 
+    parallel_tasks = []
+    frame_paths = []
     with h5py.File(input_path, "r") as handle:
         schema = text_value(handle.attrs.get("schema", ""))
         if schema not in SUPPORTED_SCHEMAS:
@@ -291,29 +347,49 @@ def main() -> int:
         selected = list(enumerate(group_names))[::args.stride]
         if not selected:
             raise ValueError("The HDF5 file contains no saved frames.")
+        worker_count = min(args.workers, len(selected))
 
         background_path = background_file(input_path, schema)
         background = h5py.File(background_path, "r") if background_path is not None else None
         try:
             if background is not None and read_frame_order(background) != group_names:
                 raise ValueError(f"Frame order differs between {input_path.name} and {background_path.name}.")
-            frame_paths = []
             for output_index, (source_index, group_name) in enumerate(selected):
                 frame_path = frame_folder / f"frame_{source_index:06d}_{group_name}.png"
-                render_frame(
-                    frame_path,
-                    schema,
-                    handle,
-                    background,
-                    group_name,
-                    config,
-                    args.threshold_vorticity_background,
-                )
                 frame_paths.append(frame_path)
-                print(f"[{output_index + 1}/{len(selected)}] Saved {frame_path}")
+                if worker_count == 1:
+                    render_frame(
+                        frame_path,
+                        schema,
+                        handle,
+                        background,
+                        group_name,
+                        config,
+                        args.threshold_vorticity_background,
+                    )
+                    print(f"[{output_index + 1}/{len(selected)}] Saved {frame_path}")
+                else:
+                    parallel_tasks.append((
+                        frame_path,
+                        input_path,
+                        background_path,
+                        schema,
+                        group_name,
+                        args.threshold_vorticity_background,
+                        args.x_axis_min,
+                        args.x_axis_max,
+                    ))
         finally:
             if background is not None:
                 background.close()
+
+    print(f"GIF render workers: {worker_count}", flush=True)
+    if worker_count > 1:
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            for output_index, frame_path in enumerate(
+                executor.map(render_frame_from_files, parallel_tasks)
+            ):
+                print(f"[{output_index + 1}/{len(frame_paths)}] Saved {frame_path}")
 
     gif_stem = (
         f"{input_path.stem}_vorticity"

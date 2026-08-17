@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from plot_tau_midpoint_vorticity import (
+    color_normalization,
     midpoint_frame_index,
     panel_grid_shape,
     selected_frame_index,
@@ -67,6 +68,20 @@ class PanelGridShapeTests(unittest.TestCase):
     def test_rejects_nonpositive_columns(self):
         with self.assertRaisesRegex(ValueError, "positive"):
             panel_grid_shape(4, 0)
+
+
+class ColorNormalizationTests(unittest.TestCase):
+    def test_symlog_keeps_zero_centered(self):
+        normalization = color_normalization("symlog", 12.0, 0.35)
+        self.assertAlmostEqual(float(normalization(0.0)), 0.5)
+        self.assertAlmostEqual(
+            float(normalization(-1.0)),
+            1.0 - float(normalization(1.0)),
+        )
+
+    def test_rejects_unknown_scale(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported"):
+            color_normalization("unknown", 12.0, 0.35)
 
 
 if __name__ == "__main__":

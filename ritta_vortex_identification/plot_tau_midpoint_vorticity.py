@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, SymLogNorm
 from matplotlib.lines import Line2D
 import numpy as np
 
@@ -70,6 +70,25 @@ def panel_grid_shape(
     columns = min(columns, panel_count)
     rows = math.ceil(panel_count / columns)
     return rows, columns
+
+
+def color_normalization(
+    color_scale: str,
+    color_limit: float,
+    symlog_linthresh: float,
+):
+    """Build a shared symmetric linear or symmetric-log normalization."""
+    if color_scale == "linear":
+        return Normalize(vmin=-color_limit, vmax=color_limit)
+    if color_scale == "symlog":
+        return SymLogNorm(
+            linthresh=symlog_linthresh,
+            linscale=1.0,
+            vmin=-color_limit,
+            vmax=color_limit,
+            base=10.0,
+        )
+    raise ValueError(f"Unsupported color scale: {color_scale}")
 
 
 def resolve_tau_runs(
@@ -147,6 +166,8 @@ def save_comparison(
     *,
     contour_magnitudes: Sequence[float],
     color_limit: float,
+    color_scale: str,
+    symlog_linthresh: float,
     x_limits: Tuple[float, float],
     y_limits: Tuple[float, float],
     colormap: str,
@@ -169,7 +190,11 @@ def save_comparison(
     active_axes = axes[:len(panels)]
     for axis in axes[len(panels):]:
         axis.set_visible(False)
-    normalization = Normalize(vmin=-color_limit, vmax=color_limit)
+    normalization = color_normalization(
+        color_scale,
+        color_limit,
+        symlog_linthresh,
+    )
     positive_levels = np.asarray(contour_magnitudes, dtype=float)
     negative_levels = -positive_levels[::-1]
     image = None
@@ -237,6 +262,10 @@ def save_comparison(
     figure.suptitle(f"{position_label} and absolute-vorticity contours")
     colorbar = figure.colorbar(image, ax=active_axes.tolist(), pad=0.02, shrink=0.92)
     colorbar.set_label(r"vorticity $\omega$")
+    if color_scale == "symlog":
+        signed_ticks = [-value for value in reversed(contour_magnitudes)]
+        signed_ticks.extend((0.0, *contour_magnitudes))
+        colorbar.set_ticks(signed_ticks)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output_path, dpi=dpi)
     plt.close(figure)
@@ -256,6 +285,17 @@ def main() -> int:
         default=DEFAULT_CONTOUR_MAGNITUDES,
     )
     parser.add_argument("--color-limit", type=float, default=12.0)
+    parser.add_argument(
+        "--color-scale",
+        choices=("linear", "symlog"),
+        default="linear",
+    )
+    parser.add_argument(
+        "--symlog-linthresh",
+        type=float,
+        default=0.35,
+        help="Half-width of the linear region around zero for the symlog scale.",
+    )
     parser.add_argument("--x-limits", nargs=2, type=float, default=(-1.0, 5.0))
     parser.add_argument("--y-limits", nargs=2, type=float, default=(-1.5, 1.5))
     parser.add_argument("--colormap", default="RdBu_r")
@@ -292,6 +332,10 @@ def main() -> int:
         parser.error(str(error))
     if not math.isfinite(args.color_limit) or args.color_limit <= 0.0:
         parser.error("--color-limit must be positive and finite")
+    if not math.isfinite(args.symlog_linthresh) or args.symlog_linthresh <= 0.0:
+        parser.error("--symlog-linthresh must be positive and finite")
+    if args.symlog_linthresh >= args.color_limit:
+        parser.error("--symlog-linthresh must be smaller than --color-limit")
     if contour_magnitudes[-1] >= args.color_limit:
         parser.error("Every contour magnitude must be smaller than --color-limit")
     if args.workers < 1:
@@ -331,6 +375,8 @@ def main() -> int:
         output_path,
         contour_magnitudes=contour_magnitudes,
         color_limit=args.color_limit,
+        color_scale=args.color_scale,
+        symlog_linthresh=args.symlog_linthresh,
         x_limits=tuple(args.x_limits),
         y_limits=tuple(args.y_limits),
         colormap=args.colormap,
@@ -351,6 +397,14 @@ def main() -> int:
         )
     print("Contour levels: " + ", ".join(f"{value:g}" for value in signed_levels))
     print(f"Shared color limits: {-args.color_limit:g}, {args.color_limit:g}")
+    print(
+        f"Color scale: {args.color_scale}"
+        + (
+            f" (linear for |omega| <= {args.symlog_linthresh:g})"
+            if args.color_scale == "symlog"
+            else ""
+        )
+    )
     print(f"Saved {output_path}")
     return 0
 

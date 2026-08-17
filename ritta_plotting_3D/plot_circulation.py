@@ -157,6 +157,19 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--data-only",
+        action="store_true",
+        help=(
+            "calculate CSV data and time-series plots without rendering "
+            "slice PNGs or a GIF"
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="analysis output folder; defaults to outputs/<run-name>_<mode>",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help=(
@@ -164,7 +177,10 @@ def parse_args():
             "only missing snapshots"
         ),
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.view_only and args.data_only:
+        parser.error("--view-only and --data-only cannot be used together")
+    return args
 
 
 def snapshot_step(path):
@@ -301,7 +317,7 @@ def physical_time(step, cfl, dx_base, levels):
     return cfl * step * dx_base / (2**levels)
 
 
-def output_paths(snapshot_folder, view_only):
+def output_paths(snapshot_folder, view_only, output_dir=None):
     run_name = (
         snapshot_folder.parent.name
         if snapshot_folder.name == "output"
@@ -309,7 +325,9 @@ def output_paths(snapshot_folder, view_only):
     )
     output_suffix = "slice_view" if view_only else "circulation"
     output_folder = (
-        Path(__file__).resolve().parent
+        output_dir.expanduser().resolve()
+        if output_dir is not None
+        else Path(__file__).resolve().parent
         / "outputs"
         / f"{run_name}_{output_suffix}"
     )
@@ -359,6 +377,7 @@ def load_resume_rows(
     levels,
     vorticity_threshold_fraction,
     center_threshold_fraction,
+    require_frame=True,
 ):
     if not csv_path.is_file():
         return {}
@@ -441,13 +460,16 @@ def load_resume_rows(
                 "Cannot resume because --center-threshold-fraction differs "
                 f"at snapshot step {step}."
             )
-        if Path(row["snapshot_file"]).name != snapshot.name:
+        saved_snapshot = Path(row["snapshot_file"]).expanduser().resolve()
+        if saved_snapshot != snapshot.resolve():
             raise ValueError(
                 f"Cannot resume: source snapshot differs at step {step}."
             )
 
         frame_path = frames_folder / f"flowTime_{step}.png"
-        if frame_path.is_file() and frame_path.stat().st_size > 0:
+        if not require_frame or (
+            frame_path.is_file() and frame_path.stat().st_size > 0
+        ):
             reusable_rows[step] = row
 
     return reusable_rows
@@ -793,6 +815,7 @@ def calculate_and_render(
     vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
     center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
     analyze=True,
+    render=True,
 ):
     # Resetting between snapshots avoids reader cache and time-state errors
     # observed when Chombo files are loaded as one ParaView file series.
@@ -856,18 +879,19 @@ def calculate_and_render(
             fetched_scalar(center_data, X_R2_VORTICITY_ARRAY),
         )
 
-    render_slice(
-        simple,
-        clip,
-        normalized_vorticity,
-        circulation_region,
-        peak_vorticity,
-        vorticity_threshold_fraction,
-        center_x,
-        center_y,
-        png_path,
-        camera_bounds,
-    )
+    if render:
+        render_slice(
+            simple,
+            clip,
+            normalized_vorticity,
+            circulation_region,
+            peak_vorticity,
+            vorticity_threshold_fraction,
+            center_x,
+            center_y,
+            png_path,
+            camera_bounds,
+        )
     return (
         circulation,
         peak_vorticity,
@@ -1007,11 +1031,17 @@ def main():
             circulation_plot_path,
             center_x_plot_path,
             center_y_plot_path,
-        ) = output_paths(snapshot_folder, args.view_only)
+        ) = output_paths(snapshot_folder, args.view_only, args.output_dir)
         output_folder.mkdir(parents=True, exist_ok=True)
-        prepare_frames_folder(frames_folder, resume=args.resume)
+        if not args.data_only:
+            prepare_frames_folder(frames_folder, resume=args.resume)
         simple, servermanager = load_paraview()
-        camera_bounds, camera_snapshot = determine_camera_bounds(simple, snapshots)
+        camera_bounds = None
+        camera_snapshot = None
+        if not args.data_only:
+            camera_bounds, camera_snapshot = determine_camera_bounds(
+                simple, snapshots
+            )
 
         print(f"Snapshot folder: {snapshot_folder}", flush=True)
         print(f"Config:          {config_path}", flush=True)
@@ -1020,11 +1050,14 @@ def main():
         print(f"CFL:             {cfl:g}", flush=True)
         print(f"dx_base:         {dx_base:g}", flush=True)
         print(f"nLevels:         {levels}", flush=True)
-        print(f"Camera reference: {camera_snapshot.name}", flush=True)
+        if camera_snapshot is not None:
+            print(f"Camera reference: {camera_snapshot.name}", flush=True)
         print(f"View only:        {args.view_only}", flush=True)
+        print(f"Data only:        {args.data_only}", flush=True)
         print(f"Resume:           {args.resume}", flush=True)
-        print(f"PNG frames:      {frames_folder}", flush=True)
-        print(f"Output GIF:      {gif_path}", flush=True)
+        if not args.data_only:
+            print(f"PNG frames:      {frames_folder}", flush=True)
+            print(f"Output GIF:      {gif_path}", flush=True)
         if not args.view_only:
             print(
                 "Circulation threshold: "
@@ -1055,6 +1088,7 @@ def main():
                     levels,
                     args.vorticity_threshold_fraction,
                     args.center_threshold_fraction,
+                    require_frame=not args.data_only,
                 )
             write_csv_rows(
                 csv_path,
@@ -1114,6 +1148,7 @@ def main():
                     ),
                     center_threshold_fraction=args.center_threshold_fraction,
                     analyze=not args.view_only,
+                    render=not args.data_only,
                 )
                 if writer is not None:
                     row = {
@@ -1135,7 +1170,9 @@ def main():
                         "center_x": f"{center_x:.16g}",
                         "center_y": f"{center_y:.16g}",
                         "snapshot_file": str(snapshot.resolve()),
-                        "png_file": str(frame_path.resolve()),
+                        "png_file": (
+                            "" if args.data_only else str(frame_path.resolve())
+                        ),
                     }
                     writer.writerow(row)
                     reusable_rows[step] = row
@@ -1186,10 +1223,12 @@ def main():
                 "Center y-coordinate",
                 "Lamb center y",
             )
-        build_gif(frames_folder, snapshots, gif_path)
+        if not args.data_only:
+            build_gif(frames_folder, snapshots, gif_path)
         simple.ResetSession()
-        print(f"GIF:  {gif_path}", flush=True)
-        print(f"PNGs: {frames_folder}", flush=True)
+        if not args.data_only:
+            print(f"GIF:  {gif_path}", flush=True)
+            print(f"PNGs: {frames_folder}", flush=True)
         if not args.view_only:
             print(f"Circulation plot: {circulation_plot_path}", flush=True)
             print(f"Center x plot:    {center_x_plot_path}", flush=True)

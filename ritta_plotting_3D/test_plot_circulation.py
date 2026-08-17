@@ -14,6 +14,7 @@ from plot_circulation import (
     TRANSPARENT_GIF_FILTER,
     lamb_center_from_moments,
     load_resume_rows,
+    output_paths,
     threshold_fraction,
     write_csv_rows,
 )
@@ -87,6 +88,58 @@ class LambCenterTests(unittest.TestCase):
             )
 
             self.assertEqual(reusable_rows[32]["snapshot_step"], "32")
+
+    def test_data_only_resume_does_not_require_a_frame(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            folder = Path(temporary_directory)
+            snapshot = folder / "flowTime_32.hdf5"
+            frames_folder = folder / "frames"
+            frames_folder.mkdir()
+
+            row = {name: "" for name in CSV_FIELDNAMES}
+            row.update(
+                {
+                    "frame_index": "0",
+                    "snapshot_step": "32",
+                    "time": "0.1",
+                    "center_threshold_fraction": "0.4",
+                    "snapshot_file": str(snapshot),
+                }
+            )
+            csv_path = folder / "circulation.csv"
+            write_csv_rows(csv_path, [row])
+
+            reusable_rows = load_resume_rows(
+                csv_path,
+                [snapshot],
+                frames_folder,
+                cfl=0.1,
+                dx_base=0.0625,
+                levels=1,
+                vorticity_threshold_fraction=0.02,
+                center_threshold_fraction=0.4,
+                require_frame=False,
+            )
+
+            self.assertEqual(reusable_rows[32]["snapshot_step"], "32")
+
+    def test_output_directory_override_is_used(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            folder = Path(temporary_directory)
+            snapshot_folder = folder / "run" / "output"
+            requested_output = folder / "campaign_run_circulation"
+
+            paths = output_paths(
+                snapshot_folder,
+                view_only=False,
+                output_dir=requested_output,
+            )
+
+            self.assertEqual(paths[0], requested_output.resolve())
+            self.assertEqual(
+                paths[3],
+                requested_output.resolve() / "leading_vortex_circulation.csv",
+            )
 
 
 if __name__ == "__main__":

@@ -118,7 +118,15 @@ def read_config_scalar(config_path, name, required=True):
 
 
 def analysis_csv_path(run_folder):
-    return SCRIPT_FOLDER / "outputs" / f"{run_folder.name}_circulation" / CSV_NAME
+    outputs_folder = SCRIPT_FOLDER / "outputs"
+    campaign_path = (
+        outputs_folder
+        / f"{run_folder.parent.name}_{run_folder.name}_circulation"
+        / CSV_NAME
+    )
+    if campaign_path.is_file():
+        return campaign_path
+    return outputs_folder / f"{run_folder.name}_circulation" / CSV_NAME
 
 
 def finite_float(row, column, csv_path):

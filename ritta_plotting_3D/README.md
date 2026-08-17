@@ -14,6 +14,17 @@ Run one analysis pass for the circulation, axial center, and radial center:
 ./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER STRIDE
 ```
 
+For CSV data and time-history plots without the slice frames or GIF, use
+`--data-only`. To use the MPI-enabled ParaView build in parallel, set
+`PARAVIEW_MPI_RANKS`; the wrapper deliberately uses ParaView's bundled
+`mpiexec` so its MPI implementation matches `pvbatch`:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+PARAVIEW_MPI_RANKS=128 \
+./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER 1 --data-only
+```
+
 The leading-vortex circulation cutoff defaults to the paper's 2% of maximum
 absolute vorticity. Set it explicitly with `--vorticity-threshold-fraction`.
 
@@ -83,14 +94,20 @@ runs the circulation analysis only for cases whose CSV is missing, then saves
 For a formation-time sweep, label and numerically order the curves by `b_f_tau`:
 
 ```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 ./ritta_plotting_3D/run_resolution_comparison.sh \
-    runs/ns_amr_lgf/formation 1 0.4 tau 0.02
+    runs/ns_amr_lgf/formation 1 0.4 tau 0.02 128
 ```
+
+The final argument is the ParaView MPI rank count. The comparison wrapper uses
+data-only analysis and writes each case under a campaign-qualified folder such
+as `outputs/formation_tau_5p0_circulation/`, preventing identically named cases
+from different campaigns from overwriting one another.
 
 Formation-time comparisons also save
 `combined_circulation_vs_time_over_tau.png`, which plots the same circulation
 against `t / tau` over `0 <= t / tau <= 1`.
 
 The circulation region always uses the paper's 2%-of-maximum-vorticity cutoff.
-The final argument sets that cutoff explicitly. The third argument independently
-sets the Lamb-center cutoff.
+The fifth argument sets that cutoff explicitly. The third argument independently
+sets the Lamb-center cutoff, and the sixth sets the MPI rank count.

@@ -168,6 +168,24 @@ class ResolutionComparisonTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "belongs to a different run"):
                     comparison.read_dataset(run_folder)
 
+    def test_prefers_campaign_qualified_analysis_csv(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_folder = root / "formation_new" / "tau_1p0"
+            campaign_csv = (
+                root
+                / "outputs"
+                / "formation_new_tau_1p0_circulation"
+                / comparison.CSV_NAME
+            )
+            campaign_csv.parent.mkdir(parents=True)
+            campaign_csv.write_text("time,circulation,center_x\n", encoding="utf-8")
+
+            with mock.patch.object(comparison, "SCRIPT_FOLDER", root):
+                path = comparison.analysis_csv_path(run_folder)
+
+            self.assertEqual(path, campaign_csv)
+
 
 if __name__ == "__main__":
     unittest.main()

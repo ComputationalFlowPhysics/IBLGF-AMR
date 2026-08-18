@@ -7,12 +7,17 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from largest_threshold_circulation import (  # noqa: E402
     largest_enclosed_component,
     measure_frame,
     save_combined_plots,
+)
+from plot_largest_threshold_gifs import (  # noqa: E402
+    configured_limits,
+    save_gif,
 )
 
 
@@ -91,6 +96,33 @@ class LargestThresholdCirculationTests(unittest.TestCase):
                 ).stat().st_size,
                 0,
             )
+
+    def test_threshold_gif_helpers_use_requested_limits_and_frame_order(self):
+        config = {
+            "plot": {
+                "x_axis_min": -1.0,
+                "x_axis_max": 8.0,
+                "y_axis_min": -3.0,
+                "y_axis_max": 3.0,
+            }
+        }
+        self.assertEqual(
+            configured_limits(config, (0.0, 10.0), (-2.0, 2.0)),
+            ((0.0, 10.0), (-2.0, 2.0)),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            folder = Path(temporary_directory)
+            frames = []
+            for index, color in enumerate(("red", "green", "blue")):
+                path = folder / f"frame_{index}.png"
+                Image.new("RGB", (8, 8), color=color).save(path)
+                frames.append(path)
+            output_path = folder / "threshold.gif"
+
+            save_gif(frames, output_path, fps=8)
+
+            with Image.open(output_path) as image:
+                self.assertEqual(image.n_frames, 3)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,12 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_threshold_masks import assign_extrema_tracks, save_extrema_track_plot
+from make_threshold_masks import (
+    assign_extrema_tracks,
+    first_pair_interactions,
+    save_extrema_track_plot,
+    save_pair_interaction_plot,
+)
 
 
 def record(frame_index: int, time: float, x: float, y: float = 0.0) -> dict:
@@ -23,6 +28,43 @@ def record(frame_index: int, time: float, x: float, y: float = 0.0) -> dict:
 
 
 class AssignExtremaTracksTests(unittest.TestCase):
+    def test_interpolates_first_pair_crossover(self) -> None:
+        first_start = record(0, 0.0, 0.0)
+        second_start = record(0, 0.0, 2.0)
+        first_end = record(1, 2.0, 2.0)
+        second_end = record(1, 2.0, 0.0)
+        for item in (first_start, first_end):
+            item["track_id"] = 1
+        for item in (second_start, second_end):
+            item["track_id"] = 2
+
+        interactions = first_pair_interactions(
+            [[first_start, second_start], [first_end, second_end]]
+        )
+
+        self.assertEqual(len(interactions), 1)
+        self.assertEqual(interactions[0]["kind"], "crossover")
+        self.assertAlmostEqual(interactions[0]["time"], 1.0)
+        self.assertAlmostEqual(interactions[0]["x"], 1.0)
+
+    def test_uses_closest_approach_when_pair_does_not_cross(self) -> None:
+        first_start = record(0, 0.0, 0.0)
+        second_start = record(0, 0.0, 3.0)
+        first_end = record(1, 1.0, 1.0)
+        second_end = record(1, 1.0, 2.2)
+        for item in (first_start, first_end):
+            item["track_id"] = 1
+        for item in (second_start, second_end):
+            item["track_id"] = 2
+
+        interactions = first_pair_interactions(
+            [[first_start, second_start], [first_end, second_end]]
+        )
+
+        self.assertEqual(interactions[0]["kind"], "closest_approach")
+        self.assertAlmostEqual(interactions[0]["time"], 1.0)
+        self.assertAlmostEqual(interactions[0]["separation"], 1.2)
+
     def test_missing_track_matches_constant_velocity_prediction(self) -> None:
         true_reappearance = record(3, 3.0, 3.0)
         stale_position_distractor = record(3, 3.0, 1.2)
@@ -88,16 +130,37 @@ class AssignExtremaTracksTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             output_folder = Path(temporary_directory)
+            interactions = [
+                {
+                    "first_track_id": 1,
+                    "second_track_id": 2,
+                    "time": 0.5,
+                    "x": 1.5,
+                    "kind": "crossover",
+                    "separation": 0.0,
+                }
+            ]
             for coordinate in ("x", "y"):
-                output_path = output_folder / f"{coordinate}_vs_time.png"
-                track_count = save_extrema_track_plot(
-                    output_path,
-                    records_by_frame,
-                    (4.0, 3.0),
-                    coordinate,
-                )
-                self.assertEqual(track_count, 1)
-                self.assertGreater(output_path.stat().st_size, 0)
+                for forcing_frequency, suffix in ((None, "time"), (0.1, "cycles")):
+                    output_path = output_folder / f"{coordinate}_vs_{suffix}.png"
+                    track_count = save_extrema_track_plot(
+                        output_path,
+                        records_by_frame,
+                        (4.0, 3.0),
+                        coordinate,
+                        forcing_frequency=forcing_frequency,
+                        interactions=interactions,
+                    )
+                    self.assertEqual(track_count, 1)
+                    self.assertGreater(output_path.stat().st_size, 0)
+            interaction_path = output_folder / "pair_interactions.png"
+            save_pair_interaction_plot(
+                interaction_path,
+                interactions,
+                0.1,
+                (4.0, 3.0),
+            )
+            self.assertGreater(interaction_path.stat().st_size, 0)
 
 
 if __name__ == "__main__":

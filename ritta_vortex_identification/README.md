@@ -126,6 +126,17 @@ numerical frame order, so the reconstruction, extrema, threshold, and area
 filtering calculations are unchanged. Tracking remains serial because it
 depends on preceding frames.
 
+After tracking has already been calculated, regenerate only the tracking and
+interaction PNGs from `threshold_hmaxima_tracks.csv` with:
+
+```bash
+python make_threshold_masks.py RUN_FOLDER CONFIG_FILE --plots-only --no-preview
+```
+
+This does not read the simulation HDF5 frames or recalculate maxima, masks, or
+track assignments. Set `RITTA_VORTEX_RESULT_FOLDER` when the saved CSV is in a
+campaign-specific output folder.
+
 Set `vorticity_threshold` and `minimum_region_area` under `[threshold_mask]`. The command runs Stage 1 first, removes mask regions below the physical-area cutoff, and marks only saved positive h-maxima inside the retained regions. It saves `hmaxima.h5`, `threshold_masks.h5`, and a terminal-selected `threshold_masks_preview.png`.
 
 The same command also tracks the retained h-maxima across consecutive analyzed

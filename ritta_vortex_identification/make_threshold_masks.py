@@ -464,6 +464,37 @@ def write_extrema_tracks(path: Path, records_by_frame: List[List[dict]]) -> None
                 writer.writerow(row)
 
 
+def read_extrema_tracks(path: Path) -> List[List[dict]]:
+    """Load saved tracking records without recalculating maxima or masks."""
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Saved track CSV does not exist: {path}. Run without --plots-only first."
+        )
+
+    records_by_index = {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        missing_columns = set(TRACK_COLUMNS) - set(reader.fieldnames or ())
+        if missing_columns:
+            raise ValueError(
+                f"{path} is missing columns: {', '.join(sorted(missing_columns))}"
+            )
+        for row in reader:
+            frame_index = int(row["frame_index"])
+            track_text = row["track_id"].strip()
+            records_by_index.setdefault(frame_index, []).append({
+                "frame_index": frame_index,
+                "frame_name": row["frame_name"],
+                "time": float(row["time"]),
+                "candidate_id": int(row["candidate_id"]),
+                "track_id": int(track_text) if track_text else None,
+                "x": float(row["x"]),
+                "y": float(row["y"]),
+                "peak_vorticity": float(row["peak_vorticity"]),
+            })
+    return [records_by_index[index] for index in sorted(records_by_index)]
+
+
 def track_colors(track_count: int) -> list:
     """Return stable categorical colors for the plotted track IDs."""
     colors = []
@@ -754,6 +785,11 @@ def main() -> int:
         help="Process this many h-maxima and mask frames concurrently (default: 1).",
     )
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
+    parser.add_argument(
+        "--plots-only",
+        action="store_true",
+        help="Regenerate tracking and interaction PNGs from the saved track CSV only.",
+    )
     args = parser.parse_args()
     if args.stride < 1:
         parser.error("--stride must be a positive integer.")
@@ -800,6 +836,81 @@ def main() -> int:
         and math.isfinite(forcing_duration)
         and forcing_duration > 0.0
     )
+
+    if args.plots_only:
+        records_by_frame = read_extrema_tracks(track_csv_path)
+        interactions = all_pair_interactions(records_by_frame)
+        forcing_end_by_track = (
+            forcing_end_cycles_by_track(
+                records_by_frame,
+                forcing_frequency,
+                forcing_duration,
+            )
+            if has_forcing_cycles
+            else {}
+        )
+        figure_size = (
+            float(config["plot"].get("figure_width", 10.0)),
+            float(config["plot"].get("figure_height", 7.0)),
+        )
+        plot_results = [
+            (
+                x_track_plot_path,
+                save_extrema_track_plot(
+                    x_track_plot_path, records_by_frame, figure_size, "x"
+                ),
+            ),
+            (
+                y_track_plot_path,
+                save_extrema_track_plot(
+                    y_track_plot_path, records_by_frame, figure_size, "y"
+                ),
+            ),
+        ]
+        if has_forcing_cycles:
+            plot_results.extend([
+                (
+                    x_cycle_plot_path,
+                    save_extrema_track_plot(
+                        x_cycle_plot_path,
+                        records_by_frame,
+                        figure_size,
+                        "x",
+                        forcing_frequency,
+                        interactions=interactions,
+                    ),
+                ),
+                (
+                    y_cycle_plot_path,
+                    save_extrema_track_plot(
+                        y_cycle_plot_path,
+                        records_by_frame,
+                        figure_size,
+                        "y",
+                        forcing_frequency,
+                    ),
+                ),
+            ])
+            save_pair_interaction_plot(
+                interaction_plot_path,
+                interactions,
+                forcing_frequency,
+                figure_size,
+                forcing_end_by_track,
+            )
+        for plot_path, track_count in plot_results:
+            print(f"Saved {plot_path} ({track_count} tracks from saved CSV)")
+        if has_forcing_cycles:
+            pair_count = len({
+                (item["first_track_id"], item["second_track_id"])
+                for item in interactions
+            })
+            print(
+                f"Saved {interaction_plot_path} "
+                f"({len(interactions)} crossovers among {pair_count} track pairs)"
+            )
+        print("Reused saved threshold_hmaxima_tracks.csv; maxima and masks were not recalculated.")
+        return 0
 
     # Stage 1 runs first and writes the extrema and physical raster consumed below.
     subprocess.run([

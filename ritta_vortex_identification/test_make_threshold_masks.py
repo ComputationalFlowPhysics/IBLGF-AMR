@@ -10,8 +10,10 @@ from make_threshold_masks import (
     all_pair_interactions,
     assign_extrema_tracks,
     forcing_end_cycles_by_track,
+    read_extrema_tracks,
     save_extrema_track_plot,
     save_pair_interaction_plot,
+    write_extrema_tracks,
 )
 
 
@@ -29,6 +31,18 @@ def record(frame_index: int, time: float, x: float, y: float = 0.0) -> dict:
 
 
 class AssignExtremaTracksTests(unittest.TestCase):
+    def test_saved_tracks_round_trip_for_plots_only(self) -> None:
+        tracked = record(0, 0.0, 1.0)
+        untracked = record(1, 1.0, 2.0)
+        tracked["track_id"] = 3
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "tracks.csv"
+            write_extrema_tracks(path, [[tracked], [untracked]])
+            loaded = read_extrema_tracks(path)
+
+        self.assertEqual(loaded, [[tracked], [untracked]])
+
     def test_interpolates_first_pair_crossover(self) -> None:
         first_start = record(0, 0.0, 0.0)
         second_start = record(0, 0.0, 2.0)

@@ -8240,7 +8240,7 @@ class NewtonIteration
         clean<Target>();
         clean<face_aux_type>();
 
-        up_and_down<Source>();
+        up_and_down<Source_U>();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();

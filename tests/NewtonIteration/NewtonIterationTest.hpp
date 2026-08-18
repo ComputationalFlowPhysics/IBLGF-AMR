@@ -136,6 +136,25 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 				}
 			};
 
+		simulation_.bc_vel() =
+			[this](std::size_t idx, float_type t, auto coord)
+			{
+				float_type T0 = 0.5;
+				if (t<=0.0 && smooth_start_)
+					return 0.0;
+				else if (t<T0-1e-10 && smooth_start_)
+				{
+					float_type h1 = exp(-1/(t/T0));
+					float_type h2 = exp(-1/(1 - t/T0));
+
+					return -U_[idx] * (h1/(h1+h2));
+				}
+				else
+				{
+					return -U_[idx];
+				}
+			};
+
 		/*simulation_.frame_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
 			{return 0.0;};*/
@@ -235,8 +254,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 
-			simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
-			simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
+			simulation_.template read_h5<fu_i_type>(simulation_.restart_field_dir(), "u");
+			simulation_.template read_h5<fp_i_type>(simulation_.restart_field_dir(), "p");
 			//this->initialize(); 
 		}
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Render the circulation-slice and 2%-vorticity 3D GIFs for every tau run.
-# Usage: sbatch ritta_plotting_3D/run_tau_gifs_rm.sbatch SWEEP_FOLDER [SLICE_STRIDE] [3D_STRIDE] [CASE_WORKERS]
+# Usage: sbatch ritta_plotting_3D/run_tau_gifs_rm.sbatch SWEEP_FOLDER [SLICE_STRIDE] [3D_STRIDE] [CASE_WORKERS] [CASE...]
 
 #SBATCH -A mch250004p
 #SBATCH -p RM
@@ -21,9 +21,11 @@ sweep_input="${1:-}"
 slice_stride="${2:-1}"
 vorticity_stride="${3:-5}"
 case_workers="${4:-${PARAVIEW_CASE_WORKERS:-6}}"
+gif_products="${GIF_PRODUCTS:-both}"
+selected_cases=("${@:5}")
 
 if [[ -z "$sweep_input" ]]; then
-    echo "Usage: sbatch $0 SWEEP_FOLDER [SLICE_STRIDE] [3D_STRIDE] [CASE_WORKERS]" >&2
+    echo "Usage: sbatch $0 SWEEP_FOLDER [SLICE_STRIDE] [3D_STRIDE] [CASE_WORKERS] [CASE...]" >&2
     exit 2
 fi
 for value_name in slice_stride vorticity_stride case_workers; do
@@ -33,6 +35,10 @@ for value_name in slice_stride vorticity_stride case_workers; do
         exit 2
     fi
 done
+if [[ "$gif_products" != "both" && "$gif_products" != "vorticity" ]]; then
+    echo "Error: GIF_PRODUCTS must be both or vorticity; got $gif_products" >&2
+    exit 2
+fi
 
 if [[ "$sweep_input" = /* ]]; then
     sweep_dir="$sweep_input"
@@ -64,25 +70,27 @@ run_case() {
 
     run_name="$(basename "$run_dir")"
     circulation_output="ritta_plotting_3D/outputs/${sweep_name}_${run_name}_circulation"
-    vorticity_output="ritta_plotting_3D/outputs/${sweep_name}_${run_name}_vorticity_0p02"
+    vorticity_output="ritta_plotting_3D/outputs/${sweep_name}_${run_name}_vorticity_0p02_domain_outline"
     csv_path="$circulation_output/leading_vortex_circulation.csv"
     log_path="$log_dir/${run_name}.log"
 
-    if [[ ! -s "$csv_path" ]]; then
+    if [[ "$gif_products" == "both" && ! -s "$csv_path" ]]; then
         echo "[$run_name] Missing calculated circulation CSV: $csv_path" >&2
         return 1
     fi
 
     {
-        echo "[$run_name] Rendering centered circulation-slice GIF from saved CSV values."
-        ./ritta_plotting_3D/run_circulation_analysis.sh \
-            "$run_dir" \
-            "$slice_stride" \
-            --render-from-csv \
-            --resume \
-            --output-dir "$circulation_output" \
-            --vorticity-threshold-fraction 0.02 \
-            --center-threshold-fraction 0.4
+        if [[ "$gif_products" == "both" ]]; then
+            echo "[$run_name] Rendering centered circulation-slice GIF from saved CSV values."
+            ./ritta_plotting_3D/run_circulation_analysis.sh \
+                "$run_dir" \
+                "$slice_stride" \
+                --render-from-csv \
+                --resume \
+                --output-dir "$circulation_output" \
+                --vorticity-threshold-fraction 0.02 \
+                --center-threshold-fraction 0.4
+        fi
 
         echo "[$run_name] Rendering 3D normalized-vorticity GIF at threshold 0.02."
         ./ritta_plotting_3D/run_qcriterion_animation.sh \
@@ -90,19 +98,46 @@ run_case() {
             "$vorticity_stride" \
             --field vorticity \
             --vorticity-threshold-fraction 0.02 \
+            --show-domain-boundary \
             --output-dir "$vorticity_output" \
             --resume
     } >"$log_path" 2>&1
 }
 
 run_dirs=()
+found_cases=()
 shopt -s nullglob
 for candidate in "$sweep_dir"/*; do
     [[ -d "$candidate/output" ]] || continue
     snapshots=("$candidate"/output/flowTime_*.hdf5)
     [[ ${#snapshots[@]} -gt 0 ]] || continue
+    if [[ ${#selected_cases[@]} -gt 0 ]]; then
+        candidate_name="$(basename "$candidate")"
+        selected=0
+        for requested in "${selected_cases[@]}"; do
+            if [[ "$candidate_name" == "$requested" ]]; then
+                selected=1
+                found_cases+=("$requested")
+                break
+            fi
+        done
+        [[ $selected -eq 1 ]] || continue
+    fi
     run_dirs+=("$candidate")
 done
+
+if [[ ${#selected_cases[@]} -gt 0 ]]; then
+    for requested in "${selected_cases[@]}"; do
+        found=0
+        for available in "${found_cases[@]}"; do
+            [[ "$requested" == "$available" ]] && found=1
+        done
+        if [[ $found -eq 0 ]]; then
+            echo "Requested case was not found with snapshots: $requested" >&2
+            exit 2
+        fi
+    done
+fi
 
 if [[ ${#run_dirs[@]} -eq 0 ]]; then
     echo "No child tau runs with output/flowTime_*.hdf5 found in $sweep_dir" >&2
@@ -116,6 +151,7 @@ echo "  Tau runs:            ${#run_dirs[@]}"
 echo "  Slice stride:        $slice_stride"
 echo "  3D vorticity stride: $vorticity_stride"
 echo "  Concurrent cases:    $case_workers"
+echo "  Products:            $gif_products"
 echo "  3D threshold:        0.02 of max |vorticity|"
 echo "  Logs:                 $repo_root/$log_dir"
 echo
@@ -129,7 +165,7 @@ wait_for_batch() {
     local failed=0
     for index in "${!batch_pids[@]}"; do
         if wait "${batch_pids[$index]}"; then
-            echo "[${batch_names[$index]}] Both GIFs completed."
+            echo "[${batch_names[$index]}] Requested GIF products completed."
         else
             echo "[${batch_names[$index]}] GIF generation failed." >&2
             echo "Log: ${batch_logs[$index]}" >&2
@@ -164,4 +200,4 @@ if [[ $failed -ne 0 ]]; then
     exit 1
 fi
 
-echo "All tau-sweep circulation-slice and 3D vorticity GIFs completed."
+echo "All requested tau-sweep GIF products completed."

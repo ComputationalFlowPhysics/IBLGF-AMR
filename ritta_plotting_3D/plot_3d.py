@@ -118,6 +118,14 @@ def parse_args():
         type=Path,
         help="output folder; defaults to outputs/<run-name>_<field>",
     )
+    parser.add_argument(
+        "--show-domain-boundary",
+        action="store_true",
+        help=(
+            "overlay the current Chombo data-domain outline so adaptive-domain "
+            "motion is visible"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -305,6 +313,7 @@ def render_snapshot(
     png_path,
     field,
     vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
+    show_domain_boundary=False,
 ):
     # Start every frame from a completely empty ParaView session. In
     # particular, do not reuse a reader or render view across snapshots.
@@ -376,6 +385,25 @@ def render_snapshot(
     # ResetSession can leave a stale representation registered in headless
     # pvbatch runs. Hide everything before showing this snapshot's threshold.
     simple.HideAll(render_view)
+    render_proxies = []
+    if show_domain_boundary:
+        domain_outline = simple.Outline(
+            registrationName="ChomboDataDomainOutline",
+            Input=source,
+        )
+        domain_outline.UpdatePipeline()
+        outline_display = simple.Show(
+            domain_outline,
+            render_view,
+            "GeometryRepresentation",
+        )
+        outline_display.Representation = "Surface"
+        simple.ColorBy(outline_display, None)
+        outline_display.AmbientColor = [0.12, 0.12, 0.12]
+        outline_display.DiffuseColor = [0.12, 0.12, 0.12]
+        outline_display.LineWidth = 2.5
+        render_proxies.append(domain_outline)
+
     threshold_display = simple.Show(
         threshold,
         render_view,
@@ -392,6 +420,10 @@ def render_snapshot(
     render_view.CameraViewUp = CAMERA_VIEW_UP
     render_view.CameraParallelScale = CAMERA_PARALLEL_SCALE
     render_view.ViewSize = IMAGE_RESOLUTION
+    if show_domain_boundary:
+        # Preserve the oblique viewing direction but fit all visible Chombo
+        # data, including its outline, inside the frame.
+        simple.ResetCamera(render_view)
 
     # SaveScreenshot performs the render, so a separate Render call is unnecessary.
     simple.SaveScreenshot(
@@ -407,7 +439,13 @@ def render_snapshot(
     # Explicitly unregister proxies so ParaView does not retain this frame's
     # representations and reader caches until the next session reset.
     simple.HideAll(render_view)
-    for proxy in [*field_proxies, *vector_proxies, cell_to_point, source]:
+    for proxy in [
+        *render_proxies,
+        *field_proxies,
+        *vector_proxies,
+        cell_to_point,
+        source,
+    ]:
         simple.Delete(proxy)
     simple.RemoveViewsAndLayouts()
 
@@ -509,6 +547,7 @@ def main():
         print(f"Snapshots used:  {len(snapshots)}", flush=True)
         print(f"Stride:          {args.stride}", flush=True)
         print(f"Resume:          {args.resume}", flush=True)
+        print(f"Domain boundary: {args.show_domain_boundary}", flush=True)
         if args.field == "vorticity":
             print(
                 "Vorticity cutoff: "
@@ -527,6 +566,7 @@ def main():
                     "snapshot_file",
                     "source_cells",
                     "source_points",
+                    "domain_boundary",
                     "png_file",
                 ]
             )
@@ -552,6 +592,7 @@ def main():
                         png_path,
                         args.field,
                         args.vorticity_threshold_fraction,
+                        args.show_domain_boundary,
                     )
                 manifest_writer.writerow(
                     [
@@ -560,6 +601,7 @@ def main():
                         str(snapshot.resolve()),
                         source_cells,
                         source_points,
+                        int(args.show_domain_boundary),
                         str(png_path.resolve()),
                     ]
                 )

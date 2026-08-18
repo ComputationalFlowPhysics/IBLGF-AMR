@@ -13,12 +13,12 @@ PVBATCH="${PARAVIEW_BIN_DIR}/pvbatch"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") RUN_FOLDER [STRIDE] [--field q-criterion|vorticity] [--vorticity-threshold-fraction FRACTION] [--output-dir FOLDER] [--resume]
+  $(basename "$0") RUN_FOLDER [STRIDE] [--field q-criterion|vorticity] [--vorticity-threshold-fraction FRACTION] [--show-domain-boundary] [--output-dir FOLDER] [--resume]
 
 Examples:
   $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21
   $(basename "$0") /path/to/run 5 --field q-criterion
-  $(basename "$0") /path/to/run 5 --field vorticity --vorticity-threshold-fraction 0.02
+  $(basename "$0") /path/to/run 5 --field vorticity --vorticity-threshold-fraction 0.02 --show-domain-boundary
   $(basename "$0") /path/to/run 5 --field vorticity --resume
 
 Optional environment override:

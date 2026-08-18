@@ -6,6 +6,18 @@
 ./ritta_plotting_3D/run_qcriterion_animation.sh RUN_FOLDER STRIDE --field q-criterion
 ```
 
+For a normalized-vorticity surface together with the current Chombo data-domain
+outline, use:
+
+```bash
+./ritta_plotting_3D/run_qcriterion_animation.sh RUN_FOLDER 5 \
+    --field vorticity --vorticity-threshold-fraction 0.02 \
+    --show-domain-boundary
+```
+
+The camera fits the full visible domain in boundary mode, making asymmetric or
+lagging adaptive-domain motion visible behind the vorticity surface.
+
 ## Circulation and vortex-ring center
 
 Run one analysis pass for the circulation, axial center, and radial center:
@@ -140,3 +152,27 @@ python ritta_plotting_3D/plot_resolution_comparison.py \
 The circulation region always uses the paper's 2%-of-maximum-vorticity cutoff.
 The fifth argument sets that cutoff explicitly. The third argument independently
 sets the Lamb-center cutoff, and the sixth sets the concurrent case count.
+
+## 3D slice with the standalone 2D vortex-identification method
+
+`slice_vortex_identification.py` applies the same stages as the standalone 2D
+workflow to raw `edge_aux_2` cells on the positive-side `z=1e-6` meridional
+slice: positive h-maxima, time-growing mirrored rectangles, robust circular
+Gaussian dipole fits, and positive-vorticity integration inside the fitted
+circle. Original visible AMR cells are integrated with their native `dx^2`
+areas; covered coarse cells are excluded.
+
+The script reads only the selected component plane from each 3D HDF5 chunk and
+processes independent frames in worker processes. This avoids rereading each
+3D frame for every stage and avoids MPI-distributed connected-component or HDF5
+operations. Submit a selected formation sweep with:
+
+```bash
+sbatch ritta_plotting_3D/run_slice_vortex_identification_rm.sbatch \
+    runs/ns_amr_lgf/formation_new 1 64 \
+    tau_1p0 tau_3p0 tau_5p0 tau_7p0 tau_9p0
+```
+
+The numeric arguments are frame stride and frame-worker count. The batch script
+also runs `plot_combined_time_series.py`, producing
+`outputs/formation_new_slice_vortex_identification/combined_circulation_vs_time.png`.

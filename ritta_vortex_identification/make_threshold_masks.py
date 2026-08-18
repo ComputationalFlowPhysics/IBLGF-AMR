@@ -716,6 +716,28 @@ def save_pair_interaction_plot(
     ordered_pairs = sorted(interactions_by_pair)
 
     for index, pair in enumerate(ordered_pairs):
+        crossover_times = [
+            forcing_frequency * item["time"]
+            for item in interactions_by_pair[pair]
+        ]
+        forcing_end_times = []
+        if forcing_end_by_track is not None:
+            forcing_end_times = [
+                forcing_end_by_track[track_id]
+                for track_id in pair
+                if track_id in forcing_end_by_track
+            ]
+        connector_times = sorted(crossover_times + forcing_end_times)
+        if len(connector_times) >= 2:
+            axis.plot(
+                [index] * len(connector_times),
+                connector_times,
+                color="#555555",
+                linewidth=1.5,
+                linestyle="-",
+                zorder=1,
+            )
+
         for item in interactions_by_pair[pair]:
             label = "interpolated crossover"
             axis.scatter(
@@ -726,25 +748,27 @@ def save_pair_interaction_plot(
                 facecolors="black",
                 edgecolors="black",
                 linewidths=1.2,
+                zorder=3,
                 label=label if label not in labeled else None,
             )
             labeled.add(label)
 
         if forcing_end_by_track is not None:
-            for offset, track_id, marker, color, marker_label in (
-                (-0.13, pair[0], "^", "#1f77b4", "first track forcing end"),
-                (0.13, pair[1], "v", "#ff7f0e", "second track forcing end"),
+            for track_id, marker, color, marker_label in (
+                (pair[0], "^", "#1f77b4", "first track forcing end"),
+                (pair[1], "v", "#ff7f0e", "second track forcing end"),
             ):
                 if track_id not in forcing_end_by_track:
                     continue
                 axis.scatter(
-                    index + offset,
+                    index,
                     forcing_end_by_track[track_id],
                     s=65,
                     marker=marker,
                     facecolors=color,
                     edgecolors="black",
                     linewidths=0.8,
+                    zorder=3,
                     label=marker_label if marker_label not in labeled else None,
                 )
                 labeled.add(marker_label)

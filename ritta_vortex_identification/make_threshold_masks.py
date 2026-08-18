@@ -713,12 +713,22 @@ def save_pair_interaction_plot(
     for item in interactions:
         pair = (int(item["first_track_id"]), int(item["second_track_id"]))
         interactions_by_pair.setdefault(pair, []).append(item)
-    ordered_pairs = sorted(interactions_by_pair)
+    ordered_pairs = sorted(
+        interactions_by_pair,
+        key=lambda pair: (
+            min(item["time"] for item in interactions_by_pair[pair]),
+            pair,
+        ),
+    )
 
     for index, pair in enumerate(ordered_pairs):
+        pair_interactions = sorted(
+            interactions_by_pair[pair],
+            key=lambda item: item["time"],
+        )
         crossover_times = [
             forcing_frequency * item["time"]
-            for item in interactions_by_pair[pair]
+            for item in pair_interactions
         ]
         forcing_end_times = []
         if forcing_end_by_track is not None:
@@ -738,7 +748,38 @@ def save_pair_interaction_plot(
                 zorder=1,
             )
 
-        for item in interactions_by_pair[pair]:
+        first_forcing_end = (
+            forcing_end_by_track.get(pair[0])
+            if forcing_end_by_track is not None
+            else None
+        )
+        for crossover_index, crossover_time in enumerate(crossover_times):
+            if crossover_index == 0:
+                previous_time = first_forcing_end
+            else:
+                previous_time = crossover_times[crossover_index - 1]
+            if previous_time is None:
+                continue
+            normalized_delay = crossover_time - previous_time
+            axis.annotate(
+                f"{normalized_delay:.2f}",
+                (index, 0.5 * (crossover_time + previous_time)),
+                xytext=(5, 0),
+                textcoords="offset points",
+                ha="left",
+                va="center",
+                fontsize=7,
+                color="#333333",
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.75,
+                    "pad": 0.5,
+                },
+                zorder=4,
+            )
+
+        for item in pair_interactions:
             label = "interpolated crossover"
             axis.scatter(
                 index,

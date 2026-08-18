@@ -190,3 +190,23 @@ sbatch ritta_plotting_3D/run_slice_vortex_identification_rm.sbatch \
 The numeric arguments are frame stride and frame-worker count. The batch script
 also runs `plot_combined_time_series.py`, producing
 `outputs/formation_new_slice_vortex_identification/combined_circulation_vs_time.png`.
+
+After the fit shards are complete, render diagnostic GIFs without repeating
+the h-maxima, region, fit, tracking, or circulation calculations:
+
+```bash
+source ritta_vortex_identification/open_viewer_venv.sh
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python ritta_plotting_3D/plot_slice_fit_gifs.py \
+    ritta_plotting_3D/outputs/formation_new_slice_vortex_identification \
+    --workers 32 --stride 1 --resume \
+    --cases tau_1p0 tau_3p0 tau_5p0 tau_7p0 tau_9p0
+```
+
+Each frame shows the original signed `edge_aux_2` slice with all successful
+positive fitted centers/boundaries and their mirrored negative partners. The
+largest fit is annotated with its center, boundary radius, and measured
+positive circulation. Per-case GIFs, PNG frames, and numeric frame manifests
+are saved under `fit_diagnostics/<case>/` inside the analysis output folder.
+Use `--x-limits MIN MAX` and `--y-limits MIN MAX` to override the plotting
+limits in the analysis TOML.

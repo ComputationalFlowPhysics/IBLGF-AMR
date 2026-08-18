@@ -44,6 +44,10 @@ fi
 
 if [[ "$sweep_input" = /* ]]; then
     sweep_dir="$sweep_input"
+elif [[ -d "$PWD/$sweep_input" ]]; then
+    # Direct execution inside an interactive allocation should follow the
+    # current shell directory, not the allocation's older SLURM_SUBMIT_DIR.
+    sweep_dir="$PWD/$sweep_input"
 else
     sweep_dir="$submit_dir/$sweep_input"
 fi

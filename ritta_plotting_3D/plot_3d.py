@@ -45,6 +45,15 @@ TRANSPARENT_GIF_FILTER = (
     "[palette_source]palettegen=stats_mode=diff:reserve_transparent=1[palette];"
     "[gif][palette]paletteuse=dither=sierra2_4a:alpha_threshold=128"
 )
+MANIFEST_COLUMNS = (
+    "frame_index",
+    "snapshot_step",
+    "snapshot_file",
+    "source_cells",
+    "source_points",
+    "domain_boundary",
+    "png_file",
+)
 
 
 def positive_integer(value):
@@ -54,6 +63,16 @@ def positive_integer(value):
         raise argparse.ArgumentTypeError("stride must be an integer") from error
     if number < 1:
         raise argparse.ArgumentTypeError("stride must be at least 1")
+    return number
+
+
+def nonnegative_integer(value):
+    try:
+        number = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("value must be an integer") from error
+    if number < 0:
+        raise argparse.ArgumentTypeError("value must be nonnegative")
     return number
 
 
@@ -125,6 +144,34 @@ def parse_args():
             "overlay the current Chombo data-domain outline so adaptive-domain "
             "motion is visible"
         ),
+    )
+    parallel_mode = parser.add_mutually_exclusive_group()
+    parallel_mode.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parallel_mode.add_argument(
+        "--frames-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parallel_mode.add_argument(
+        "--assemble-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--worker-index",
+        type=nonnegative_integer,
+        default=0,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--worker-count",
+        type=positive_integer,
+        default=1,
+        help=argparse.SUPPRESS,
     )
     return parser.parse_args()
 
@@ -199,6 +246,60 @@ def prepare_output_folders(output_folder, frames_folder, resume):
     for old_frame in frames_folder.iterdir():
         if old_frame.is_file() and re.fullmatch(r"flowTime_\d+\.png", old_frame.name):
             old_frame.unlink()
+
+
+def worker_manifest_folder(output_folder):
+    return output_folder / "worker_manifests"
+
+
+def worker_manifest_path(output_folder, worker_index):
+    return worker_manifest_folder(output_folder) / f"worker_{worker_index:04d}.csv"
+
+
+def prepare_parallel_output(output_folder, frames_folder, resume, worker_count):
+    prepare_output_folders(output_folder, frames_folder, resume)
+    manifests_folder = worker_manifest_folder(output_folder)
+    manifests_folder.mkdir(parents=True, exist_ok=True)
+    for worker_index in range(worker_count):
+        path = worker_manifest_path(output_folder, worker_index)
+        if path.is_file():
+            path.unlink()
+
+
+def assigned_snapshots(snapshots, worker_index, worker_count):
+    if worker_index >= worker_count:
+        raise ValueError(
+            f"worker index {worker_index} must be less than worker count "
+            f"{worker_count}"
+        )
+    return list(enumerate(snapshots))[worker_index::worker_count]
+
+
+def write_manifest(path, rows):
+    with path.open("w", newline="") as manifest_file:
+        writer = csv.DictWriter(manifest_file, fieldnames=MANIFEST_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def read_worker_rows(output_folder, worker_count):
+    rows_by_step = {}
+    for worker_index in range(worker_count):
+        path = worker_manifest_path(output_folder, worker_index)
+        if not path.is_file():
+            raise RuntimeError(f"Missing frame-worker manifest: {path}")
+        with path.open(newline="") as manifest_file:
+            reader = csv.DictReader(manifest_file)
+            if reader.fieldnames != list(MANIFEST_COLUMNS):
+                raise RuntimeError(f"Invalid frame-worker manifest columns: {path}")
+            for row in reader:
+                step = int(row["snapshot_step"])
+                if step in rows_by_step:
+                    raise RuntimeError(
+                        f"Snapshot step {step} appears in multiple worker manifests"
+                    )
+                rows_by_step[step] = row
+    return rows_by_step
 
 
 def existing_manifest_rows(manifest_path):
@@ -523,6 +624,127 @@ def build_gif(frames_folder, snapshots, gif_path):
         raise RuntimeError(f"ffmpeg did not create a valid GIF: {gif_path}")
 
 
+def frame_manifest_row(
+    frame_index,
+    snapshot,
+    png_path,
+    source_cells,
+    source_points,
+    show_domain_boundary,
+):
+    return {
+        "frame_index": frame_index,
+        "snapshot_step": snapshot_step(snapshot),
+        "snapshot_file": str(snapshot.resolve()),
+        "source_cells": source_cells,
+        "source_points": source_points,
+        "domain_boundary": int(show_domain_boundary),
+        "png_file": str(png_path.resolve()),
+    }
+
+
+def render_assigned_frames(
+    args,
+    snapshots,
+    output_folder,
+    frames_folder,
+    old_manifest,
+):
+    assignments = assigned_snapshots(
+        snapshots,
+        args.worker_index,
+        args.worker_count,
+    )
+    needs_render = any(
+        not reusable_png(
+            frames_folder / f"flowTime_{snapshot_step(snapshot)}.png"
+        )
+        for _, snapshot in assignments
+    )
+    simple = load_paraview() if needs_render else None
+    rows = []
+
+    print(
+        f"Frame worker {args.worker_index + 1}/{args.worker_count}: "
+        f"{len(assignments)} snapshots",
+        flush=True,
+    )
+    for assignment_index, (frame_index, snapshot) in enumerate(assignments):
+        step = snapshot_step(snapshot)
+        png_path = frames_folder / f"flowTime_{step}.png"
+        reuse = args.resume and reusable_png(png_path)
+        print(
+            f"[worker {args.worker_index + 1}, "
+            f"{assignment_index + 1}/{len(assignments)}] "
+            f"{'Reusing' if reuse else 'Rendering'} {snapshot.name}",
+            flush=True,
+        )
+        if reuse:
+            old_row = old_manifest.get(step, {})
+            source_cells = old_row.get("source_cells", "")
+            source_points = old_row.get("source_points", "")
+        else:
+            source_cells, source_points = render_snapshot(
+                simple,
+                snapshot.resolve(),
+                png_path,
+                args.field,
+                args.vorticity_threshold_fraction,
+                args.show_domain_boundary,
+            )
+        rows.append(
+            frame_manifest_row(
+                frame_index,
+                snapshot,
+                png_path,
+                source_cells,
+                source_points,
+                args.show_domain_boundary,
+            )
+        )
+
+    manifest_path = worker_manifest_path(output_folder, args.worker_index)
+    write_manifest(manifest_path, rows)
+    print(f"Frame worker manifest: {manifest_path}", flush=True)
+
+
+def assemble_parallel_output(
+    args,
+    snapshots,
+    output_folder,
+    frames_folder,
+    gif_path,
+    manifest_path,
+):
+    rows_by_step = read_worker_rows(output_folder, args.worker_count)
+    rows = []
+    for frame_index, snapshot in enumerate(snapshots):
+        step = snapshot_step(snapshot)
+        png_path = frames_folder / f"flowTime_{step}.png"
+        if not reusable_png(png_path):
+            raise RuntimeError(f"Missing rendered PNG for snapshot step {step}: {png_path}")
+        if step not in rows_by_step:
+            raise RuntimeError(f"No frame-worker result for snapshot step {step}")
+        row = rows_by_step[step]
+        if int(row["frame_index"]) != frame_index:
+            raise RuntimeError(
+                f"Frame-worker index mismatch for snapshot step {step}: "
+                f"expected {frame_index}, got {row['frame_index']}"
+            )
+        if Path(row["snapshot_file"]).resolve() != snapshot.resolve():
+            raise RuntimeError(
+                f"Frame-worker source mismatch for snapshot step {step}"
+            )
+        rows.append(row)
+
+    write_manifest(manifest_path, rows)
+    print("All parallel PNG frames rendered. Building GIF...", flush=True)
+    build_gif(frames_folder, snapshots, gif_path)
+    print(f"Done: {gif_path}", flush=True)
+    print(f"PNG frames: {frames_folder}", flush=True)
+    print(f"Manifest: {manifest_path}", flush=True)
+
+
 def main():
     args = parse_args()
 
@@ -534,11 +756,55 @@ def main():
             args.field,
             args.output_dir,
         )
+        if args.worker_index >= args.worker_count:
+            raise ValueError(
+                f"--worker-index {args.worker_index} must be less than "
+                f"--worker-count {args.worker_count}"
+            )
+        if args.prepare_only:
+            prepare_parallel_output(
+                output_folder,
+                frames_folder,
+                args.resume,
+                args.worker_count,
+            )
+            print(f"Prepared parallel output: {output_folder}", flush=True)
+            return 0
+
+        if args.frames_only:
+            prepare_output_folders(output_folder, frames_folder, resume=True)
+            worker_manifest_folder(output_folder).mkdir(parents=True, exist_ok=True)
+            old_manifest = (
+                existing_manifest_rows(manifest_path) if args.resume else {}
+            )
+            render_assigned_frames(
+                args,
+                snapshots,
+                output_folder,
+                frames_folder,
+                old_manifest,
+            )
+            return 0
+
+        if args.assemble_only:
+            assemble_parallel_output(
+                args,
+                snapshots,
+                output_folder,
+                frames_folder,
+                gif_path,
+                manifest_path,
+            )
+            return 0
+
         old_manifest = existing_manifest_rows(manifest_path) if args.resume else {}
         prepare_output_folders(output_folder, frames_folder, args.resume)
+        assignments = assigned_snapshots(snapshots, 0, 1)
         needs_render = any(
-            not reusable_png(frames_folder / f"flowTime_{snapshot_step(snapshot)}.png")
-            for snapshot in snapshots
+            not reusable_png(
+                frames_folder / f"flowTime_{snapshot_step(snapshot)}.png"
+            )
+            for _, snapshot in assignments
         )
         simple = load_paraview() if needs_render else None
 
@@ -558,18 +824,11 @@ def main():
         print(f"Output GIF:      {gif_path}", flush=True)
 
         with manifest_path.open("w", newline="") as manifest_file:
-            manifest_writer = csv.writer(manifest_file)
-            manifest_writer.writerow(
-                [
-                    "frame_index",
-                    "snapshot_step",
-                    "snapshot_file",
-                    "source_cells",
-                    "source_points",
-                    "domain_boundary",
-                    "png_file",
-                ]
+            manifest_writer = csv.DictWriter(
+                manifest_file,
+                fieldnames=MANIFEST_COLUMNS,
             )
+            manifest_writer.writeheader()
 
             for frame_index, snapshot in enumerate(snapshots):
                 step = snapshot_step(snapshot)
@@ -595,15 +854,14 @@ def main():
                         args.show_domain_boundary,
                     )
                 manifest_writer.writerow(
-                    [
+                    frame_manifest_row(
                         frame_index,
-                        step,
-                        str(snapshot.resolve()),
+                        snapshot,
+                        png_path,
                         source_cells,
                         source_points,
-                        int(args.show_domain_boundary),
-                        str(png_path.resolve()),
-                    ]
+                        args.show_domain_boundary,
+                    )
                 )
                 manifest_file.flush()
 

@@ -12,11 +12,18 @@ outline, use:
 ```bash
 ./ritta_plotting_3D/run_qcriterion_animation.sh RUN_FOLDER 5 \
     --field vorticity --vorticity-threshold-fraction 0.02 \
-    --show-domain-boundary
+    --show-domain-boundary --workers 8
 ```
 
 The camera fits the full visible domain in boundary mode, making asymmetric or
 lagging adaptive-domain motion visible behind the vorticity surface.
+
+`--workers` distributes disjoint frame subsets across independent one-rank
+ParaView processes. Each worker writes unique PNGs and a private manifest; the
+wrapper verifies and combines them in numeric snapshot order after all workers
+finish. Inside a Slurm allocation, workers are launched as exclusive one-core
+job steps. This frame parallelism preserves the serial rendering pipeline for
+each snapshot and avoids MPI-partition-dependent filters.
 
 ## Circulation and vortex-ring center
 
@@ -94,7 +101,14 @@ sbatch ritta_plotting_3D/run_tau_gifs_rm.sbatch SWEEP_FOLDER 1 5 6
 
 The last three arguments are slice stride, 3D stride, and concurrent tau cases.
 Outputs are campaign-qualified so identically named runs from other sweeps are
-not overwritten.
+not overwritten. Set `PARAVIEW_FRAME_WORKERS` to parallelize frames inside each
+3D GIF as well; the product of concurrent cases and frame workers must not
+exceed the 128 cores on one RM node:
+
+```bash
+PARAVIEW_FRAME_WORKERS=4 GIF_PRODUCTS=vorticity \
+bash ritta_plotting_3D/run_tau_gifs_rm.sbatch SWEEP_FOLDER 1 5 5
+```
 
 On Bridges-2, submit the same resume operation to a full RM node with:
 

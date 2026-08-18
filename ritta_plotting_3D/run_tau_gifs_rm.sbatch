@@ -21,6 +21,7 @@ sweep_input="${1:-}"
 slice_stride="${2:-1}"
 vorticity_stride="${3:-5}"
 case_workers="${4:-${PARAVIEW_CASE_WORKERS:-6}}"
+frame_workers="${PARAVIEW_FRAME_WORKERS:-1}"
 gif_products="${GIF_PRODUCTS:-both}"
 selected_cases=("${@:5}")
 
@@ -28,13 +29,18 @@ if [[ -z "$sweep_input" ]]; then
     echo "Usage: sbatch $0 SWEEP_FOLDER [SLICE_STRIDE] [3D_STRIDE] [CASE_WORKERS] [CASE...]" >&2
     exit 2
 fi
-for value_name in slice_stride vorticity_stride case_workers; do
+for value_name in slice_stride vorticity_stride case_workers frame_workers; do
     value="${!value_name}"
     if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
         echo "Error: $value_name must be a positive integer; got $value" >&2
         exit 2
     fi
 done
+if [[ $((case_workers * frame_workers)) -gt 128 ]]; then
+    echo "Error: CASE_WORKERS * PARAVIEW_FRAME_WORKERS cannot exceed 128." >&2
+    echo "Got $case_workers * $frame_workers = $((case_workers * frame_workers))." >&2
+    exit 2
+fi
 if [[ "$gif_products" != "both" && "$gif_products" != "vorticity" ]]; then
     echo "Error: GIF_PRODUCTS must be both or vorticity; got $gif_products" >&2
     exit 2
@@ -100,7 +106,8 @@ run_case() {
             --vorticity-threshold-fraction 0.02 \
             --show-domain-boundary \
             --output-dir "$vorticity_output" \
-            --resume
+            --resume \
+            --workers "$frame_workers"
     } >"$log_path" 2>&1
 }
 
@@ -151,6 +158,8 @@ echo "  Tau runs:            ${#run_dirs[@]}"
 echo "  Slice stride:        $slice_stride"
 echo "  3D vorticity stride: $vorticity_stride"
 echo "  Concurrent cases:    $case_workers"
+echo "  Frame workers/case:  $frame_workers"
+echo "  Max render workers:  $((case_workers * frame_workers))"
 echo "  Products:            $gif_products"
 echo "  3D threshold:        0.02 of max |vorticity|"
 echo "  Logs:                 $repo_root/$log_dir"

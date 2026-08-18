@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ProcessPoolExecutor
 import csv
+from itertools import combinations
 import math
 import subprocess
 import sys
@@ -473,8 +474,8 @@ def track_colors(track_count: int) -> list:
     return list(plt.get_cmap("turbo")(np.linspace(0.0, 1.0, track_count)))
 
 
-def first_pair_interactions(records_by_frame: List[List[dict]]) -> List[dict]:
-    """Find the first x crossover, or closest available approach, for ID pairs."""
+def all_pair_interactions(records_by_frame: List[List[dict]]) -> List[dict]:
+    """Find every x-order crossover among every pair of retained tracks."""
     tracks = {}
     for records in records_by_frame:
         for record in records:
@@ -484,10 +485,7 @@ def first_pair_interactions(records_by_frame: List[List[dict]]) -> List[dict]:
                 ] = float(record["x"])
 
     interactions = []
-    for first_id in range(1, max(tracks, default=0), 2):
-        second_id = first_id + 1
-        if first_id not in tracks or second_id not in tracks:
-            continue
+    for first_id, second_id in combinations(sorted(tracks), 2):
         times = sorted(set(tracks[first_id]) & set(tracks[second_id]))
         if not times:
             continue
@@ -500,43 +498,79 @@ def first_pair_interactions(records_by_frame: List[List[dict]]) -> List[dict]:
             for time in times
         ]
 
-        interaction = None
-        for left, right in zip(samples, samples[1:]):
-            if math.isclose(left[1], 0.0, abs_tol=1.0e-12):
-                interaction = (left[0], left[2])
-                break
-            if left[1] * right[1] < 0.0:
-                fraction = -left[1] / (right[1] - left[1])
-                interaction = (
-                    left[0] + fraction * (right[0] - left[0]),
-                    left[2] + fraction * (right[2] - left[2]),
-                )
-                break
-        if interaction is None and math.isclose(samples[-1][1], 0.0, abs_tol=1.0e-12):
-            interaction = (samples[-1][0], samples[-1][2])
+        pair_interactions = []
+        in_zero_plateau = False
+        for sample_index, sample in enumerate(samples):
+            if math.isclose(sample[1], 0.0, abs_tol=1.0e-12):
+                if not in_zero_plateau:
+                    pair_interactions.append((sample[0], sample[2]))
+                in_zero_plateau = True
+                continue
 
-        if interaction is None:
-            interaction_time, difference, interaction_x = min(
-                samples, key=lambda sample: abs(sample[1])
+            if sample_index > 0 and not in_zero_plateau:
+                left = samples[sample_index - 1]
+                right = sample
+                if left[1] * right[1] < 0.0:
+                    fraction = -left[1] / (right[1] - left[1])
+                    pair_interactions.append(
+                        (
+                            left[0] + fraction * (right[0] - left[0]),
+                            left[2] + fraction * (right[2] - left[2]),
+                        )
+                    )
+            in_zero_plateau = False
+
+        for interaction_time, interaction_x in pair_interactions:
+            interactions.append(
+                {
+                    "first_track_id": first_id,
+                    "second_track_id": second_id,
+                    "time": float(interaction_time),
+                    "x": float(interaction_x),
+                    "kind": "crossover",
+                }
             )
-            kind = "closest_approach"
-            separation = abs(difference)
-        else:
-            interaction_time, interaction_x = interaction
-            kind = "crossover"
-            separation = 0.0
+    return sorted(
+        interactions,
+        key=lambda item: (
+            item["time"],
+            item["first_track_id"],
+            item["second_track_id"],
+        ),
+    )
 
-        interactions.append(
-            {
-                "first_track_id": first_id,
-                "second_track_id": second_id,
-                "time": float(interaction_time),
-                "x": float(interaction_x),
-                "kind": kind,
-                "separation": float(separation),
-            }
+
+def forcing_end_cycles_by_track(
+    records_by_frame: List[List[dict]],
+    forcing_frequency: float,
+    forcing_duration: float,
+) -> dict:
+    """Map each retained track to its pulse's end time in forcing cycles."""
+    if not math.isfinite(forcing_frequency) or forcing_frequency <= 0.0:
+        raise ValueError("forcing_frequency must be finite and greater than zero")
+    if not math.isfinite(forcing_duration) or forcing_duration <= 0.0:
+        raise ValueError("forcing_duration must be finite and greater than zero")
+
+    first_time_by_track = {}
+    for records in records_by_frame:
+        for record in records:
+            if record["track_id"] is None:
+                continue
+            track_id = int(record["track_id"])
+            time = float(record["time"])
+            first_time_by_track[track_id] = min(
+                time,
+                first_time_by_track.get(track_id, time),
+            )
+
+    forcing_end_by_track = {}
+    for track_id, first_time in first_time_by_track.items():
+        first_cycle = forcing_frequency * first_time
+        pulse_index = max(0, math.floor(first_cycle + 1.0e-9))
+        forcing_end_by_track[track_id] = (
+            pulse_index + forcing_frequency * forcing_duration
         )
-    return interactions
+    return forcing_end_by_track
 
 
 def save_extrema_track_plot(
@@ -577,18 +611,7 @@ def save_extrema_track_plot(
         )
 
     if coordinate == "x" and interactions:
-        labeled_kinds = set()
-        for interaction in interactions:
-            exact = interaction["kind"] == "crossover"
-            kind = interaction["kind"]
-            label = None
-            if kind not in labeled_kinds:
-                label = (
-                    "interpolated crossover"
-                    if exact
-                    else "closest available approach"
-                )
-                labeled_kinds.add(kind)
+        for interaction_index, interaction in enumerate(interactions):
             horizontal = interaction["time"]
             if forcing_frequency is not None:
                 horizontal *= forcing_frequency
@@ -596,12 +619,12 @@ def save_extrema_track_plot(
                 horizontal,
                 interaction["x"],
                 s=75,
-                marker="X" if exact else "D",
-                facecolors="black" if exact else "none",
-                edgecolors="white" if exact else "black",
-                linewidths=0.8 if exact else 1.2,
+                marker="X",
+                facecolors="black",
+                edgecolors="white",
+                linewidths=0.8,
                 zorder=5,
-                label=label,
+                label="interpolated crossover" if interaction_index == 0 else None,
             )
             axis.annotate(
                 f"{interaction['first_track_id']}&{interaction['second_track_id']}",
@@ -650,43 +673,66 @@ def save_pair_interaction_plot(
     interactions: List[dict],
     forcing_frequency: float,
     figure_size: Tuple[float, float],
+    forcing_end_by_track: Optional[dict] = None,
 ) -> None:
-    """Plot one normalized first-interaction time for every adjacent ID pair."""
+    """Plot every normalized crossover and forcing-end time by track pair."""
     figure, axis = plt.subplots(figsize=figure_size)
     labeled = set()
-    for index, item in enumerate(interactions):
-        exact = item["kind"] == "crossover"
-        label = "interpolated crossover" if exact else "closest available approach"
-        axis.scatter(
-            forcing_frequency * item["time"],
-            index,
-            s=65,
-            marker="o" if exact else "D",
-            facecolors="black" if exact else "none",
-            edgecolors="black",
-            linewidths=1.2,
-            label=label if label not in labeled else None,
-        )
-        labeled.add(label)
-    axis.set_xlabel(r"normalized first-interaction time $t^* = ft = t/T$")
-    axis.set_ylabel("track pair")
-    axis.set_yticks(
-        range(len(interactions)),
-        [
-            f"{item['first_track_id']}&{item['second_track_id']}"
-            for item in interactions
-        ],
+    interactions_by_pair = {}
+    for item in interactions:
+        pair = (int(item["first_track_id"]), int(item["second_track_id"]))
+        interactions_by_pair.setdefault(pair, []).append(item)
+    ordered_pairs = sorted(interactions_by_pair)
+
+    for index, pair in enumerate(ordered_pairs):
+        for item in interactions_by_pair[pair]:
+            label = "interpolated crossover"
+            axis.scatter(
+                index,
+                forcing_frequency * item["time"],
+                s=65,
+                marker="o",
+                facecolors="black",
+                edgecolors="black",
+                linewidths=1.2,
+                label=label if label not in labeled else None,
+            )
+            labeled.add(label)
+
+        if forcing_end_by_track is not None:
+            for offset, track_id, marker, color, marker_label in (
+                (-0.13, pair[0], "^", "#1f77b4", "first track forcing end"),
+                (0.13, pair[1], "v", "#ff7f0e", "second track forcing end"),
+            ):
+                if track_id not in forcing_end_by_track:
+                    continue
+                axis.scatter(
+                    index + offset,
+                    forcing_end_by_track[track_id],
+                    s=65,
+                    marker=marker,
+                    facecolors=color,
+                    edgecolors="black",
+                    linewidths=0.8,
+                    label=marker_label if marker_label not in labeled else None,
+                )
+                labeled.add(marker_label)
+
+    axis.set_xlabel("track pair")
+    axis.set_ylabel(r"normalized time $t^* = ft = t/T$")
+    axis.set_xticks(
+        range(len(ordered_pairs)),
+        [f"{first_id}&{second_id}" for first_id, second_id in ordered_pairs],
     )
-    axis.invert_yaxis()
-    axis.set_title("First interaction time for each adjacent vortex pair")
-    axis.grid(True, axis="x", alpha=0.3)
-    if interactions:
+    axis.set_title("All crossover and forcing-end times by interacting track pair")
+    axis.grid(True, axis="y", alpha=0.3)
+    if labeled:
         axis.legend()
     else:
         axis.text(
             0.5,
             0.5,
-            "No adjacent track pairs have overlapping observations",
+            "No track-pair crossovers were detected",
             transform=axis.transAxes,
             ha="center",
             va="center",
@@ -727,7 +773,7 @@ def main() -> int:
     y_track_plot_path = output_folder / "threshold_hmaxima_y_vs_time.png"
     x_cycle_plot_path = output_folder / "threshold_hmaxima_x_vs_forcing_cycles.png"
     y_cycle_plot_path = output_folder / "threshold_hmaxima_y_vs_forcing_cycles.png"
-    interaction_plot_path = output_folder / "threshold_hmaxima_pair_first_interactions.png"
+    interaction_plot_path = output_folder / "threshold_hmaxima_pair_interactions.png"
     records_by_frame = []
     frame_times = []
     try:
@@ -743,7 +789,17 @@ def main() -> int:
         if not frequency_is_unavailable:
             raise
         forcing_frequency = math.nan
-    has_forcing_cycles = math.isfinite(forcing_frequency) and forcing_frequency > 0.0
+    forcing_duration = (
+        simulation_parameter(args.run_folder, config, "b_f_tau")
+        if math.isfinite(forcing_frequency) and forcing_frequency > 0.0
+        else math.nan
+    )
+    has_forcing_cycles = (
+        math.isfinite(forcing_frequency)
+        and forcing_frequency > 0.0
+        and math.isfinite(forcing_duration)
+        and forcing_duration > 0.0
+    )
 
     # Stage 1 runs first and writes the extrema and physical raster consumed below.
     subprocess.run([
@@ -849,7 +905,16 @@ def main() -> int:
         records_by_frame,
         minimum_track_points_setting,
     )
-    interactions = first_pair_interactions(records_by_frame)
+    interactions = all_pair_interactions(records_by_frame)
+    forcing_end_by_track = (
+        forcing_end_cycles_by_track(
+            records_by_frame,
+            forcing_frequency,
+            forcing_duration,
+        )
+        if has_forcing_cycles
+        else {}
+    )
     write_extrema_tracks(track_csv_path, records_by_frame)
     figure_size = (
         float(config["plot"].get("figure_width", 10.0)),
@@ -887,6 +952,7 @@ def main() -> int:
             interactions,
             forcing_frequency,
             figure_size,
+            forcing_end_by_track,
         )
     print(f"Saved {track_csv_path}")
     for track_plot_path, track_count in plot_results:
@@ -898,11 +964,10 @@ def main() -> int:
     if any(count != retained_track_count for _, count in plot_results):
         raise RuntimeError("A plotted track count does not match the filtered track count.")
     if has_forcing_cycles:
-        exact_count = sum(item["kind"] == "crossover" for item in interactions)
         print(
             f"Saved {interaction_plot_path} "
-            f"({exact_count} crossovers, "
-            f"{len(interactions) - exact_count} closest-approach fallbacks)"
+            f"({len(interactions)} crossovers among "
+            f"{len(set((item['first_track_id'], item['second_track_id']) for item in interactions))} track pairs)"
         )
     if args.no_preview:
         return 0

@@ -7,8 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from make_threshold_masks import (
+    all_pair_interactions,
     assign_extrema_tracks,
-    first_pair_interactions,
+    forcing_end_cycles_by_track,
     save_extrema_track_plot,
     save_pair_interaction_plot,
 )
@@ -38,7 +39,7 @@ class AssignExtremaTracksTests(unittest.TestCase):
         for item in (second_start, second_end):
             item["track_id"] = 2
 
-        interactions = first_pair_interactions(
+        interactions = all_pair_interactions(
             [[first_start, second_start], [first_end, second_end]]
         )
 
@@ -47,7 +48,7 @@ class AssignExtremaTracksTests(unittest.TestCase):
         self.assertAlmostEqual(interactions[0]["time"], 1.0)
         self.assertAlmostEqual(interactions[0]["x"], 1.0)
 
-    def test_uses_closest_approach_when_pair_does_not_cross(self) -> None:
+    def test_does_not_report_a_closest_approach(self) -> None:
         first_start = record(0, 0.0, 0.0)
         second_start = record(0, 0.0, 3.0)
         first_end = record(1, 1.0, 1.0)
@@ -57,13 +58,49 @@ class AssignExtremaTracksTests(unittest.TestCase):
         for item in (second_start, second_end):
             item["track_id"] = 2
 
-        interactions = first_pair_interactions(
+        interactions = all_pair_interactions(
             [[first_start, second_start], [first_end, second_end]]
         )
 
-        self.assertEqual(interactions[0]["kind"], "closest_approach")
-        self.assertAlmostEqual(interactions[0]["time"], 1.0)
-        self.assertAlmostEqual(interactions[0]["separation"], 1.2)
+        self.assertEqual(interactions, [])
+
+    def test_finds_every_crossover_for_nonadjacent_tracks(self) -> None:
+        records_by_frame = []
+        for frame_index, (first_x, second_x) in enumerate(
+            ((0.0, 2.0), (2.0, 0.0), (0.0, 2.0))
+        ):
+            first = record(frame_index, float(frame_index), first_x)
+            second = record(frame_index, float(frame_index), second_x)
+            first["track_id"] = 1
+            second["track_id"] = 3
+            records_by_frame.append([first, second])
+
+        interactions = all_pair_interactions(records_by_frame)
+
+        self.assertEqual(len(interactions), 2)
+        self.assertTrue(
+            all(
+                (item["first_track_id"], item["second_track_id"]) == (1, 3)
+                for item in interactions
+            )
+        )
+        self.assertAlmostEqual(interactions[0]["time"], 0.5)
+        self.assertAlmostEqual(interactions[1]["time"], 1.5)
+
+    def test_forcing_end_uses_the_track_first_observation_pulse(self) -> None:
+        first = record(0, 0.2, 0.0)
+        second = record(1, 2.4, 1.0)
+        first["track_id"] = 1
+        second["track_id"] = 2
+
+        forcing_ends = forcing_end_cycles_by_track(
+            [[first], [second]],
+            forcing_frequency=0.5,
+            forcing_duration=0.4,
+        )
+
+        self.assertAlmostEqual(forcing_ends[1], 0.2)
+        self.assertAlmostEqual(forcing_ends[2], 1.2)
 
     def test_missing_track_matches_constant_velocity_prediction(self) -> None:
         true_reappearance = record(3, 3.0, 3.0)
@@ -159,6 +196,7 @@ class AssignExtremaTracksTests(unittest.TestCase):
                 interactions,
                 0.1,
                 (4.0, 3.0),
+                {1: 0.2, 2: 1.2},
             )
             self.assertGreater(interaction_path.stat().st_size, 0)
 

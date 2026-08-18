@@ -38,9 +38,10 @@ regions_module = importlib.import_module("02_make_regions")
 fits_module = importlib.import_module("03_fit_vortices")
 metrics_module = importlib.import_module("04_positive_vortex_metrics")
 
-METHOD_VERSION = "3d-slice-vortex-identification-v1"
+METHOD_VERSION = "3d-slice-vortex-identification-v2"
 VORTICITY_COMPONENT = "edge_aux_2"
 DEFAULT_SLICE_Z = 1.0e-6
+DEFAULT_MINIMUM_PEAK_VORTICITY = 1.0e-3
 
 
 def positive_integer(value):
@@ -60,6 +61,13 @@ def finite_float(value):
         raise argparse.ArgumentTypeError("value must be a number") from error
     if not math.isfinite(number):
         raise argparse.ArgumentTypeError("value must be finite")
+    return number
+
+
+def nonnegative_float(value):
+    number = finite_float(value)
+    if number < 0.0:
+        raise argparse.ArgumentTypeError("value must be nonnegative")
     return number
 
 
@@ -251,6 +259,16 @@ def frame_candidates(maxima, regions):
     ]
 
 
+def filter_weak_maxima(maxima, minimum_peak_vorticity):
+    """Keep positive maxima whose peak vorticity reaches the absolute cutoff."""
+    peak_vorticity = np.asarray(maxima["peak_vorticity"], dtype=float)
+    keep = peak_vorticity >= minimum_peak_vorticity
+    filtered = dict(maxima)
+    for name in ("candidate_ids", "peak_x", "peak_y", "peak_vorticity"):
+        filtered[name] = np.asarray(maxima[name])[keep]
+    return filtered
+
+
 def empty_record(frame_index, frame):
     return {
         "frame_index": frame_index,
@@ -277,6 +295,8 @@ def analyze_frame(task):
         task["slice_z"],
     )
     maxima = hmaxima_module.find_hmaxima(frame, task["config"])
+    maxima_found = len(maxima["candidate_ids"])
+    maxima = filter_weak_maxima(maxima, task["minimum_peak_vorticity"])
     regions = regions_module.make_regions(
         maxima["peak_x"],
         maxima["peak_y"],
@@ -342,6 +362,8 @@ def analyze_frame(task):
         "frame_index": task["frame_index"],
         "step": frame["step"],
         "source_filename": frame["source_filename"],
+        "maxima_found": maxima_found,
+        "maxima_rejected": maxima_found - len(candidates),
         "candidate_count": len(candidates),
         "successful_fits": sum(bool(fit["success"]) for fit in fit_results),
         "records": records,
@@ -374,6 +396,12 @@ def reusable_shard(path, task):
             or payload.get("frame_index") != task["frame_index"]
             or payload.get("source_index") != task["source_index"]
             or not math.isclose(
+                float(payload.get("minimum_peak_vorticity", math.nan)),
+                task["minimum_peak_vorticity"],
+                rel_tol=0.0,
+                abs_tol=0.0,
+            )
+            or not math.isclose(
                 float(payload.get("slice_z", math.nan)),
                 task["slice_z"],
                 rel_tol=0.0,
@@ -397,6 +425,7 @@ def save_shard(path, task, result):
         "frame_index": task["frame_index"],
         "source_index": task["source_index"],
         "slice_z": task["slice_z"],
+        "minimum_peak_vorticity": task["minimum_peak_vorticity"],
         "result": result,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -452,6 +481,15 @@ def main():
     parser.add_argument("--stride", type=positive_integer, default=1)
     parser.add_argument("--workers", type=positive_integer, default=1)
     parser.add_argument("--slice-z", type=finite_float, default=DEFAULT_SLICE_Z)
+    parser.add_argument(
+        "--minimum-peak-vorticity",
+        type=nonnegative_float,
+        default=DEFAULT_MINIMUM_PEAK_VORTICITY,
+        help=(
+            "ignore h-maxima with peak vorticity below this absolute value "
+            "(default: %(default)g)"
+        ),
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
@@ -521,6 +559,7 @@ def main():
                     "metadata": metadata,
                     "origin_3d": origin_3d,
                     "slice_z": args.slice_z,
+                    "minimum_peak_vorticity": args.minimum_peak_vorticity,
                     "reynolds_number": reynolds_number,
                     "fit_settings": fit_settings,
                     "config_digest": digest,
@@ -532,6 +571,10 @@ def main():
     print(f"Selected frames:  {len(tasks)}", flush=True)
     print(f"Frame workers:    {min(args.workers, len(tasks))}", flush=True)
     print(f"Slice:            z={args.slice_z:g}", flush=True)
+    print(
+        f"Minimum peak:     omega >= {args.minimum_peak_vorticity:g}",
+        flush=True,
+    )
     print(
         "Method:           positive h-maxima -> diffusive rectangle -> "
         "circular Gaussian dipole fit -> positive AMR-cell circulation",
@@ -570,7 +613,8 @@ def main():
                 print(
                     f"[{completed}/{len(pending)}] {result['run_name']}/"
                     f"{result['source_filename']}: "
-                    f"{result['successful_fits']}/{result['candidate_count']} fits",
+                    f"{result['successful_fits']}/{result['candidate_count']} fits; "
+                    f"{result['maxima_rejected']} weak maxima ignored",
                     flush=True,
                 )
 
@@ -621,6 +665,7 @@ def main():
             {
                 "method_version": METHOD_VERSION,
                 "slice_z": args.slice_z,
+                "minimum_peak_vorticity": args.minimum_peak_vorticity,
                 "stride": args.stride,
                 "workers": min(args.workers, len(tasks)),
                 "analysis_config": str(analysis_config_path),

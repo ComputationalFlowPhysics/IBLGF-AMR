@@ -20,6 +20,7 @@ submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
 sweep_input="${1:-}"
 stride="${2:-1}"
 workers="${3:-32}"
+minimum_peak_vorticity="${MINIMUM_PEAK_VORTICITY:-0.001}"
 
 if [[ -z "$sweep_input" ]]; then
     echo "Usage: sbatch $0 SWEEP [STRIDE] [WORKERS] [CASE...]" >&2
@@ -77,6 +78,7 @@ echo "  Sweep:     $sweep_dir"
 echo "  Stride:    $stride"
 echo "  Workers:   $workers independent frame processes"
 echo "  Slice:     z=1e-6"
+echo "  Min peak:  omega >= $minimum_peak_vorticity"
 echo "  Config:    $repo_root/$config"
 echo "  Output:    $repo_root/$output_dir"
 if [[ ${#cases[@]} -gt 0 ]]; then
@@ -90,6 +92,7 @@ python ritta_plotting_3D/slice_vortex_identification.py \
     --stride "$stride" \
     --workers "$workers" \
     --slice-z 1e-6 \
+    --minimum-peak-vorticity "$minimum_peak_vorticity" \
     --output-dir "$output_dir" \
     --resume \
     "${case_args[@]}"

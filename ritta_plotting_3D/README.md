@@ -176,6 +176,11 @@ Gaussian dipole fits, and positive-vorticity integration inside the fitted
 circle. Original visible AMR cells are integrated with their native `dx^2`
 areas; covered coarse cells are excluded.
 
+A detected maximum proceeds to region construction and fitting only when its
+peak vorticity is at least `0.001`. This absolute cutoff can be changed with
+`--minimum-peak-vorticity VALUE` or, for the batch wrapper, the
+`MINIMUM_PEAK_VORTICITY` environment variable.
+
 The script reads only the selected component plane from each 3D HDF5 chunk and
 processes independent frames in worker processes. This avoids rereading each
 3D frame for every stage and avoids MPI-distributed connected-component or HDF5

@@ -13,6 +13,23 @@ import slice_vortex_identification as analysis
 
 
 class SliceVortexIdentificationTests(unittest.TestCase):
+    def test_filters_only_maxima_strictly_below_minimum_peak(self):
+        maxima = {
+            "candidate_ids": np.asarray([1, 2, 3]),
+            "peak_x": np.asarray([10.0, 20.0, 30.0]),
+            "peak_y": np.asarray([-1.0, -2.0, -3.0]),
+            "peak_vorticity": np.asarray([0.0009, 0.001, 0.002]),
+            "hmax_mask": np.ones((2, 2), dtype=bool),
+        }
+
+        filtered = analysis.filter_weak_maxima(maxima, 0.001)
+
+        np.testing.assert_array_equal(filtered["candidate_ids"], [2, 3])
+        np.testing.assert_array_equal(filtered["peak_x"], [20.0, 30.0])
+        np.testing.assert_array_equal(filtered["peak_y"], [-2.0, -3.0])
+        np.testing.assert_array_equal(filtered["peak_vorticity"], [0.001, 0.002])
+        self.assertIs(filtered["hmax_mask"], maxima["hmax_mask"])
+
     def test_chunk_boundaries_accept_length_style_offsets(self):
         boxes = np.asarray(
             [

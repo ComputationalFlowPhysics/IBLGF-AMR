@@ -37,6 +37,16 @@ def parse_args():
         default="resolution",
         help="legend parameter and curve ordering (default: resolution)",
     )
+    parser.add_argument(
+        "--exclude-case",
+        action="append",
+        default=[],
+        metavar="RUN_NAME",
+        help=(
+            "omit an immediate child run by folder name; repeat the option "
+            "to omit multiple cases"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -55,6 +65,24 @@ def discover_run_folders(sweep_folder):
             f"No immediate child run folders with output/ were found in {sweep_folder}"
         )
     return sweep_folder, run_folders
+
+
+def exclude_run_folders(run_folders, excluded_names):
+    excluded_names = set(excluded_names)
+    available_names = {folder.name for folder in run_folders}
+    unknown_names = excluded_names.difference(available_names)
+    if unknown_names:
+        raise ValueError(
+            "Cannot exclude unknown run folder(s): "
+            + ", ".join(sorted(unknown_names))
+        )
+
+    selected = [
+        folder for folder in run_folders if folder.name not in excluded_names
+    ]
+    if not selected:
+        raise ValueError("All discovered run folders were excluded")
+    return selected
 
 
 def config_from_meta(run_folder):
@@ -358,6 +386,7 @@ def main():
     args = parse_args()
     try:
         sweep_folder, run_folders = discover_run_folders(args.sweep_folder)
+        run_folders = exclude_run_folders(run_folders, args.exclude_case)
         datasets = [read_dataset(run_folder) for run_folder in run_folders]
         validate_center_thresholds(datasets)
         validate_vorticity_thresholds(datasets)

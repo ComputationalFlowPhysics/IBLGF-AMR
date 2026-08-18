@@ -65,6 +65,25 @@ PNG frames instead of recalculating completed snapshots:
 ./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER 1 --resume
 ```
 
+If the complete CSV was calculated with `--data-only`, render its slice GIF
+without repeating the circulation and Lamb-center integrations:
+
+```bash
+./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER 1 \
+    --render-from-csv --resume --output-dir EXISTING_ANALYSIS_FOLDER
+```
+
+To submit circulation-slice GIFs and 3D normalized-vorticity GIFs at the 0.02
+threshold for every immediate child of a tau sweep, use:
+
+```bash
+sbatch ritta_plotting_3D/run_tau_gifs_rm.sbatch SWEEP_FOLDER 1 5 6
+```
+
+The last three arguments are slice stride, 3D stride, and concurrent tau cases.
+Outputs are campaign-qualified so identically named runs from other sweeps are
+not overwritten.
+
 On Bridges-2, submit the same resume operation to a full RM node with:
 
 ```bash
@@ -108,6 +127,15 @@ one another.
 Formation-time comparisons also save
 `combined_circulation_vs_time_over_tau.png`, which plots the same circulation
 against `t / tau` over `0 <= t / tau <= 1`.
+
+To regenerate the combined plots from existing CSVs while omitting a bad run,
+call the plotting script directly:
+
+```bash
+python ritta_plotting_3D/plot_resolution_comparison.py \
+    runs/ns_amr_lgf/formation_new --legend-by tau \
+    --exclude-case tau_11p0
+```
 
 The circulation region always uses the paper's 2%-of-maximum-vorticity cutoff.
 The fifth argument sets that cutoff explicitly. The third argument independently

@@ -87,6 +87,23 @@ class ResolutionComparisonTests(unittest.TestCase):
             ["amr_1", "amr_2", "res_0p125", "res_0p0625"],
         )
 
+    def test_excludes_run_folder_by_name(self):
+        run_folders = [Path("tau_9p0"), Path("tau_11p0")]
+
+        selected = comparison.exclude_run_folders(
+            run_folders,
+            ["tau_11p0"],
+        )
+
+        self.assertEqual(selected, [Path("tau_9p0")])
+
+    def test_rejects_unknown_excluded_run(self):
+        with self.assertRaisesRegex(ValueError, "unknown run folder"):
+            comparison.exclude_run_folders(
+                [Path("tau_9p0")],
+                ["tau_11p0"],
+            )
+
     def test_rejects_mixed_center_thresholds(self):
         datasets = [
             {"name": "one", "center_threshold_fraction": 0.4},

@@ -3,7 +3,9 @@
 
 Usage:
     pvpython plot_3d.py OUTPUT_FOLDER [STRIDE]
-        [--field {q-criterion,vorticity}] [--resume]
+        [--field {q-criterion,vorticity}]
+        [--vorticity-threshold-fraction FRACTION]
+        [--output-dir FOLDER] [--resume]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. Generated files are saved
@@ -55,6 +57,20 @@ def positive_integer(value):
     return number
 
 
+def threshold_fraction(value):
+    try:
+        fraction = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "threshold fraction must be a number"
+        ) from error
+    if not 0.0 < fraction <= 1.0:
+        raise argparse.ArgumentTypeError(
+            "threshold fraction must be greater than 0 and at most 1"
+        )
+    return fraction
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
@@ -87,6 +103,20 @@ def parse_args():
         "--resume",
         action="store_true",
         help="reuse existing nonempty PNG frames instead of rendering them again",
+    )
+    parser.add_argument(
+        "--vorticity-threshold-fraction",
+        type=threshold_fraction,
+        default=VORTICITY_THRESHOLD_FRACTION,
+        help=(
+            "3D normalized-vorticity cutoff as a fraction of maximum |vorticity| "
+            f"(default: {VORTICITY_THRESHOLD_FRACTION:g})"
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="output folder; defaults to outputs/<run-name>_<field>",
     )
     return parser.parse_args()
 
@@ -130,7 +160,7 @@ def discover_snapshots(snapshot_folder, stride):
     return snapshots[::stride]
 
 
-def output_paths(snapshot_folder, field):
+def output_paths(snapshot_folder, field, output_dir=None):
     run_name = (
         snapshot_folder.parent.name
         if snapshot_folder.name == "output"
@@ -138,7 +168,11 @@ def output_paths(snapshot_folder, field):
     )
     field_name = field.replace("-", "")
     output_folder = (
-        Path(__file__).resolve().parent / "outputs" / f"{run_name}_{field_name}"
+        output_dir.expanduser().resolve()
+        if output_dir is not None
+        else Path(__file__).resolve().parent
+        / "outputs"
+        / f"{run_name}_{field_name}"
     )
     frames_folder = output_folder / "frames"
     gif_path = output_folder / f"{run_name}_{field_name}.gif"
@@ -235,7 +269,11 @@ def build_q_criterion_threshold(simple, vector_data):
     return threshold, [threshold, gradient]
 
 
-def build_vorticity_threshold(simple, vector_data):
+def build_vorticity_threshold(
+    simple,
+    vector_data,
+    vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
+):
     calculator = simple.PythonCalculator(
         registrationName="NormalizedVorticity",
         Input=vector_data,
@@ -256,12 +294,18 @@ def build_vorticity_threshold(simple, vector_data):
         Input=calculator,
     )
     threshold.Scalars = ["POINTS", "Normalized Vorticity"]
-    threshold.UpperThreshold = VORTICITY_THRESHOLD_FRACTION
+    threshold.UpperThreshold = vorticity_threshold_fraction
     threshold.ThresholdMethod = "Above Upper Threshold"
     return threshold, [threshold, calculator]
 
 
-def render_snapshot(simple, snapshot, png_path, field):
+def render_snapshot(
+    simple,
+    snapshot,
+    png_path,
+    field,
+    vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
+):
     # Start every frame from a completely empty ParaView session. In
     # particular, do not reuse a reader or render view across snapshots.
     simple.ResetSession()
@@ -312,7 +356,11 @@ def render_snapshot(simple, snapshot, png_path, field):
     if field == "q-criterion":
         threshold, field_proxies = build_q_criterion_threshold(simple, vector_data)
     else:
-        threshold, field_proxies = build_vorticity_threshold(simple, vector_data)
+        threshold, field_proxies = build_vorticity_threshold(
+            simple,
+            vector_data,
+            vorticity_threshold_fraction,
+        )
     threshold.UpdatePipeline()
 
     threshold_points = threshold.GetDataInformation().GetNumberOfPoints()
@@ -446,6 +494,7 @@ def main():
         output_folder, frames_folder, gif_path, manifest_path = output_paths(
             snapshot_folder,
             args.field,
+            args.output_dir,
         )
         old_manifest = existing_manifest_rows(manifest_path) if args.resume else {}
         prepare_output_folders(output_folder, frames_folder, args.resume)
@@ -460,6 +509,12 @@ def main():
         print(f"Snapshots used:  {len(snapshots)}", flush=True)
         print(f"Stride:          {args.stride}", flush=True)
         print(f"Resume:          {args.resume}", flush=True)
+        if args.field == "vorticity":
+            print(
+                "Vorticity cutoff: "
+                f"{args.vorticity_threshold_fraction:g} of max |vorticity|",
+                flush=True,
+            )
         print(f"PNG folder:      {frames_folder}", flush=True)
         print(f"Output GIF:      {gif_path}", flush=True)
 
@@ -496,6 +551,7 @@ def main():
                         snapshot.resolve(),
                         png_path,
                         args.field,
+                        args.vorticity_threshold_fraction,
                     )
                 manifest_writer.writerow(
                     [

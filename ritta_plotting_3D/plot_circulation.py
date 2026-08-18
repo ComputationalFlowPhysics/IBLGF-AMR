@@ -177,9 +177,22 @@ def parse_args():
             "only missing snapshots"
         ),
     )
+    parser.add_argument(
+        "--render-from-csv",
+        action="store_true",
+        help=(
+            "render missing slice frames using an existing complete CSV; "
+            "reuse its circulation and center values instead of integrating "
+            "them again"
+        ),
+    )
     args = parser.parse_args()
     if args.view_only and args.data_only:
         parser.error("--view-only and --data-only cannot be used together")
+    if args.render_from_csv and (args.view_only or args.data_only):
+        parser.error(
+            "--render-from-csv cannot be combined with --view-only or --data-only"
+        )
     return args
 
 
@@ -570,6 +583,7 @@ def build_leading_regions(
     vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
     center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
     analyze=True,
+    calculate_center=True,
 ):
     source = simple.VisItChomboReader(
         registrationName=snapshot.name,
@@ -624,14 +638,17 @@ def build_leading_regions(
         vorticity_threshold_fraction,
         "LeadingVortex",
     )
-    center_region, center_threshold_cells, center_region_cells = (
-        extract_largest_region(
-            simple,
-            normalized_vorticity,
-            center_threshold_fraction,
-            "LambCenterCore",
+    center_region = None
+    center_threshold_cells = 0
+    center_region_cells = 0
+    if calculate_center:
+        (
+            center_region,
+            center_threshold_cells,
+            center_region_cells,
+        ) = extract_largest_region(
+            simple, normalized_vorticity, center_threshold_fraction, "LambCenterCore"
         )
-    )
     return (
         circulation_region,
         center_region,
@@ -816,6 +833,7 @@ def calculate_and_render(
     center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
     analyze=True,
     render=True,
+    saved_row=None,
 ):
     # Resetting between snapshots avoids reader cache and time-state errors
     # observed when Chombo files are loaded as one ParaView file series.
@@ -835,11 +853,12 @@ def calculate_and_render(
         snapshot,
         vorticity_threshold_fraction=vorticity_threshold_fraction,
         center_threshold_fraction=center_threshold_fraction,
-        analyze=analyze,
+        analyze=analyze or saved_row is not None,
+        calculate_center=saved_row is None,
     )
 
-    circulation = 0.0
-    if analyze and circulation_region is not None:
+    circulation = float(saved_row["circulation"]) if saved_row else 0.0
+    if saved_row is None and analyze and circulation_region is not None:
         integrate = simple.IntegrateVariables(
             registrationName="LeadingVortexIntegral",
             Input=circulation_region,
@@ -848,9 +867,9 @@ def calculate_and_render(
         integrated_data = servermanager.Fetch(integrate)
         circulation = abs(fetched_scalar(integrated_data, VORTICITY_COMPONENT))
 
-    center_x = math.nan
-    center_y = math.nan
-    if analyze and center_region is not None:
+    center_x = float(saved_row["center_x"]) if saved_row else math.nan
+    center_y = float(saved_row["center_y"]) if saved_row else math.nan
+    if saved_row is None and analyze and center_region is not None:
         r2_vorticity = simple.Calculator(
             registrationName="LambCenterR2Vorticity",
             Input=center_region,
@@ -1034,7 +1053,10 @@ def main():
         ) = output_paths(snapshot_folder, args.view_only, args.output_dir)
         output_folder.mkdir(parents=True, exist_ok=True)
         if not args.data_only:
-            prepare_frames_folder(frames_folder, resume=args.resume)
+            prepare_frames_folder(
+                frames_folder,
+                resume=args.resume or args.render_from_csv,
+            )
         simple, servermanager = load_paraview()
         camera_bounds = None
         camera_snapshot = None
@@ -1055,6 +1077,7 @@ def main():
         print(f"View only:        {args.view_only}", flush=True)
         print(f"Data only:        {args.data_only}", flush=True)
         print(f"Resume:           {args.resume}", flush=True)
+        print(f"Render from CSV:  {args.render_from_csv}", flush=True)
         if not args.data_only:
             print(f"PNG frames:      {frames_folder}", flush=True)
             print(f"Output GIF:      {gif_path}", flush=True)
@@ -1078,7 +1101,7 @@ def main():
         csv_file = None
         writer = None
         if not args.view_only:
-            if args.resume:
+            if args.resume or args.render_from_csv:
                 reusable_rows = load_resume_rows(
                     csv_path,
                     snapshots,
@@ -1088,7 +1111,15 @@ def main():
                     levels,
                     args.vorticity_threshold_fraction,
                     args.center_threshold_fraction,
-                    require_frame=not args.data_only,
+                    require_frame=not (
+                        args.data_only or args.render_from_csv
+                    ),
+                )
+            if args.render_from_csv and len(reusable_rows) != len(snapshots):
+                raise ValueError(
+                    "--render-from-csv requires a complete, compatible "
+                    f"CSV for all {len(snapshots)} selected snapshots; found "
+                    f"{len(reusable_rows)} reusable rows in {csv_path}."
                 )
             write_csv_rows(
                 csv_path,
@@ -1115,8 +1146,16 @@ def main():
                     and frame_path.is_file()
                     and frame_path.stat().st_size > 0
                 )
-                reusable_analysis = not args.view_only and step in reusable_rows
-                if args.resume and (reusable_view or reusable_analysis):
+                saved_row = reusable_rows.get(step)
+                reusable_analysis = not args.view_only and saved_row is not None
+                reusable_frame = (
+                    frame_path.is_file() and frame_path.stat().st_size > 0
+                )
+                can_skip = reusable_view or (
+                    reusable_analysis
+                    and (not args.render_from_csv or reusable_frame)
+                )
+                if (args.resume or args.render_from_csv) and can_skip:
                     print(
                         f"[{frame_index + 1}/{len(snapshots)}] "
                         f"Reusing {snapshot.name}",
@@ -1149,8 +1188,9 @@ def main():
                     center_threshold_fraction=args.center_threshold_fraction,
                     analyze=not args.view_only,
                     render=not args.data_only,
+                    saved_row=saved_row if args.render_from_csv else None,
                 )
-                if writer is not None:
+                if writer is not None and saved_row is None:
                     row = {
                         "frame_index": frame_index,
                         "snapshot_step": step,

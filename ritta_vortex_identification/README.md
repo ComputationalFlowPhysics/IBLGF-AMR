@@ -208,6 +208,8 @@ Add `--stride 5` to either `run_all.py` command to process every fifth frame.
 Add `--workers 128` to use up to 128 frame workers in Stages 1, 3, and 4.
 Run one `run_all.py` controller process; do not start one complete pipeline per
 MPI rank because those processes would target the same result files.
+In batch mode, add `--cases NAME...` to process only selected run-folder names
+and write a manifest containing just those cases.
 
 These run stages 1–4 without previews. Each dataset gets a folder under
 `outputs/pipeline_results/` containing `hmaxima.h5`, `regions.h5`, `fits.h5`,

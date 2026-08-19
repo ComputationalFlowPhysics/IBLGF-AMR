@@ -66,6 +66,28 @@ def batch_runs(folder: Union[str, Path], pattern: str) -> List[Path]:
     return runs
 
 
+def select_batch_cases(runs: List[Path], case_names: List[str]) -> List[Path]:
+    """Return requested batch cases in command-line order."""
+    if len(set(case_names)) != len(case_names):
+        raise ValueError("Every --cases name must be unique.")
+
+    matches = {}
+    for run in runs:
+        matches.setdefault(run.name, []).append(run)
+
+    selected = []
+    for name in case_names:
+        candidates = matches.get(name, [])
+        if not candidates:
+            available = ", ".join(sorted(matches))
+            raise ValueError(f"Batch case {name!r} was not found. Available cases: {available}")
+        if len(candidates) > 1:
+            paths = ", ".join(str(path) for path in candidates)
+            raise ValueError(f"Batch case name {name!r} is ambiguous: {paths}")
+        selected.append(candidates[0])
+    return selected
+
+
 def dataset_label(run_folder: Path, search_root: Path, batch: bool) -> str:
     """Use a relative path so nested batch runs get distinct readable labels."""
     if not batch:
@@ -153,6 +175,12 @@ def main() -> int:
     parser.add_argument("input_folder", type=Path, help="One run/output folder, or a parent folder with --batch.")
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--batch", action="store_true", help="Recursively process every run containing output HDF5 files.")
+    parser.add_argument(
+        "--cases",
+        nargs="+",
+        metavar="NAME",
+        help="In batch mode, process only these run-folder names in the given order.",
+    )
     parser.add_argument("--stride", type=int, default=1, help="Process every Nth sorted HDF5 frame.")
     parser.add_argument(
         "--workers",
@@ -172,6 +200,8 @@ def main() -> int:
         parser.error("--stride must be a positive integer.")
     if args.workers < 1:
         parser.error("--workers must be a positive integer.")
+    if args.cases and not args.batch:
+        parser.error("--cases requires --batch.")
 
     config_file = args.config_file.expanduser().resolve()
     config = load_config(config_file)
@@ -179,6 +209,11 @@ def main() -> int:
     search_root = args.input_folder.expanduser().resolve()
     # Batch mode recursively discovers runs; single mode normalizes one supplied path.
     runs = batch_runs(search_root, pattern) if args.batch else [one_run(search_root, pattern)]
+    if args.cases:
+        try:
+            runs = select_batch_cases(runs, args.cases)
+        except ValueError as error:
+            parser.error(str(error))
     if args.batch and args.dataset_name:
         parser.error("--dataset-name is only available for a single run.")
 

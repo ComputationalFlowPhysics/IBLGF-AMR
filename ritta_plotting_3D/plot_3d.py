@@ -499,6 +499,9 @@ def render_snapshot(
             "GeometryRepresentation",
         )
         outline_display.Representation = "Surface"
+        # Some ParaView versions leave a new outline display associated with
+        # "NONE", which ColorBy cannot resolve when switching to solid color.
+        outline_display.ColorArrayName = ["POINTS", ""]
         simple.ColorBy(outline_display, None)
         outline_display.AmbientColor = [0.12, 0.12, 0.12]
         outline_display.DiffuseColor = [0.12, 0.12, 0.12]

@@ -215,3 +215,23 @@ positive circulation. Per-case GIFs, PNG frames, and numeric frame manifests
 are saved under `fit_diagnostics/<case>/` inside the analysis output folder.
 Use `--x-limits MIN MAX` and `--y-limits MIN MAX` to override the plotting
 limits in the analysis TOML.
+
+## Upper-half circulation on a 3D slice
+
+The upper-half wrapper reads the same `edge_aux_2` meridional slice and
+integrates signed vorticity over all visible AMR cell area in `y > 0`. Cells
+crossing `y=0` contribute only their upper area. The reported center uses the
+vorticity-weighted cells satisfying
+`omega >= 0.4 * max_y>0(omega)`. Analysis and GIF frames are parallelized
+independently without changing this calculation:
+
+```bash
+ritta_plotting_3D/run_slice_upper_half_circulation.sh \
+    runs/ns_amr_lgf/formation_old2 128 1 5
+```
+
+The numeric arguments are worker count, analysis stride, and GIF stride. The
+default slice is `z=1e-6`; set `SLICE_Z` to override it. Outputs go under
+`ritta_plotting_3D/outputs/<sweep>_slice_upper_half_center_0p4/`, including
+per-case CSVs and GIFs plus combined circulation and center-x plots against
+both raw and normalized time.

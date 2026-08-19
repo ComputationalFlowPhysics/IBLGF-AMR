@@ -50,6 +50,7 @@ from plot_largest_threshold_gifs import (  # noqa: E402
 
 
 METHOD_VERSION = "2d-upper-half-circulation-strong-center-v1"
+SLICE_METHOD_VERSION = "3d-slice-upper-half-circulation-strong-center-v1"
 DEFAULT_CENTER_THRESHOLD_FRACTION = 0.4
 DEFAULT_GIF_STRIDE = 5
 DEFAULT_FPS = 8
@@ -82,6 +83,36 @@ def finite_limit(value):
     if not math.isfinite(number):
         raise argparse.ArgumentTypeError("axis limit must be finite")
     return number
+
+
+def load_task_frame(task, include_cells):
+    """Load either a native 2D frame or an AMR-correct 3D meridional slice."""
+    if task.get("slice_z") is None:
+        return load_vorticity_frame(
+            task["path"],
+            task["source_index"],
+            task["config"],
+            task["metadata"],
+            include_cells=include_cells,
+        )
+
+    three_d_folder = SCRIPT_FOLDER.parent / "ritta_plotting_3D"
+    if str(three_d_folder) not in sys.path:
+        sys.path.insert(0, str(three_d_folder))
+    from slice_vortex_identification import load_slice_frame
+
+    frame = load_slice_frame(
+        task["path"],
+        task["source_index"],
+        task["config"],
+        task["metadata"],
+        task["origin_3d"],
+        task["slice_z"],
+    )
+    if not include_cells:
+        frame = dict(frame)
+        frame.pop("cells", None)
+    return frame
 
 
 def upper_half_cell_geometry(cells):
@@ -156,13 +187,7 @@ def measure_frame(frame, center_fraction=DEFAULT_CENTER_THRESHOLD_FRACTION):
 
 
 def analyze_frame(task):
-    frame = load_vorticity_frame(
-        task["path"],
-        task["source_index"],
-        task["config"],
-        task["metadata"],
-        include_cells=True,
-    )
+    frame = load_task_frame(task, include_cells=True)
     return {
         "run_name": task["run_name"],
         "frame_index": task["frame_index"],
@@ -174,11 +199,21 @@ def analyze_frame(task):
     }
 
 
-def config_digest(analysis_config, simulation_config, center_fraction):
-    digest = hashlib.sha256(METHOD_VERSION.encode("utf-8"))
+def config_digest(
+    analysis_config,
+    simulation_config,
+    center_fraction,
+    slice_z=None,
+):
+    method_version = (
+        METHOD_VERSION if slice_z is None else SLICE_METHOD_VERSION
+    )
+    digest = hashlib.sha256(method_version.encode("utf-8"))
     digest.update(analysis_config.read_bytes())
     digest.update(simulation_config.read_bytes())
     digest.update(f"{center_fraction:.17g}".encode("ascii"))
+    if slice_z is not None:
+        digest.update(f"{slice_z:.17g}".encode("ascii"))
     return digest.hexdigest()
 
 
@@ -193,7 +228,7 @@ def reusable_shard(path, task):
         payload = json.loads(path.read_text(encoding="utf-8"))
         source_stat = task["path"].stat()
         if (
-            payload.get("method_version") != METHOD_VERSION
+            payload.get("method_version") != task["method_version"]
             or payload.get("config_digest") != task["config_digest"]
             or payload.get("source_path") != str(task["path"].resolve())
             or payload.get("source_size") != source_stat.st_size
@@ -210,7 +245,7 @@ def reusable_shard(path, task):
 def save_shard(path, task, result):
     source_stat = task["path"].stat()
     payload = {
-        "method_version": METHOD_VERSION,
+        "method_version": task["method_version"],
         "config_digest": task["config_digest"],
         "source_path": str(task["path"].resolve()),
         "source_size": source_stat.st_size,
@@ -324,7 +359,7 @@ def write_datasets(path, run_info):
 def render_frame(task):
     shard = Path(task["shard_path"])
     payload = json.loads(shard.read_text(encoding="utf-8"))
-    if payload.get("method_version") != METHOD_VERSION:
+    if payload.get("method_version") != task["method_version"]:
         raise ValueError(f"Unexpected upper-half result version in {shard}")
     result = payload["result"]
     source_path = Path(payload["source_path"])
@@ -345,20 +380,24 @@ def render_frame(task):
             "reused": True,
         }
 
-    frame = load_vorticity_frame(
-        source_path,
-        int(payload["source_index"]),
-        task["config"],
-        task["metadata"],
-        include_cells=False,
-    )
+    frame_task = {
+        **task,
+        "path": source_path,
+        "source_index": int(payload["source_index"]),
+    }
+    frame = load_task_frame(frame_task, include_cells=False)
     omega = np.asarray(frame["vorticity"], dtype=float)
     finite_absolute = np.abs(omega[np.isfinite(omega)])
     color_limit = float(np.max(finite_absolute)) if finite_absolute.size else 1.0
     if not math.isfinite(color_limit) or color_limit <= 0.0:
         color_limit = 1.0
     threshold = float(result["center_threshold_vorticity"])
-    upper_rows = np.asarray(frame["y"], dtype=float)[:, None] > 0.0
+    # Include raster cells whose physical area intersects y > 0, matching the
+    # clipped-cell integration used for the saved values.
+    upper_rows = (
+        np.asarray(frame["y"], dtype=float)[:, None] + 0.5 * float(frame["dx"])
+        > 0.0
+    )
     center_mask = (
         np.isfinite(omega) & upper_rows & (omega >= threshold)
         if math.isfinite(threshold)
@@ -501,6 +540,8 @@ def render_gifs(output_folder, run_info, config, workers, stride, fps, resume,
     plot = config.get("plot", {})
     threshold_plot = config.get("threshold_mask", {})
     method = json.loads((output_folder / "method.json").read_text(encoding="utf-8"))
+    method_version = str(method["method_version"])
+    slice_z = method.get("slice_z")
     center_fraction = float(method["center_threshold_fraction"])
     threshold_label = f"{100.0 * center_fraction:g}%"
     tasks = []
@@ -508,6 +549,14 @@ def render_gifs(output_folder, run_info, config, workers, stride, fps, resume,
     for info in run_info:
         case = info["name"]
         metadata = simulation_metadata(info["run_folder"], config)
+        origin_3d = None
+        if slice_z is not None:
+            three_d_folder = SCRIPT_FOLDER.parent / "ritta_plotting_3D"
+            if str(three_d_folder) not in sys.path:
+                sys.path.insert(0, str(three_d_folder))
+            from slice_vortex_identification import simulation_origin_3d
+
+            origin_3d = simulation_origin_3d(Path(metadata["source"]))
         shards = sorted(
             (output_folder / case / "frame_results").glob("flowTime_*.json"),
             key=shard_step,
@@ -528,8 +577,11 @@ def render_gifs(output_folder, run_info, config, workers, stride, fps, resume,
                     "run_folder": str(info["run_folder"]),
                     "png_path": str(case_output / "frames" / f"flowTime_{step}.png"),
                     "resume": resume,
+                    "method_version": method_version,
                     "config": config,
                     "metadata": metadata,
+                    "slice_z": slice_z,
+                    "origin_3d": origin_3d,
                     "threshold_label": threshold_label,
                     "colormap": str(plot.get("colormap", "RdBu_r")),
                     "region_color": str(
@@ -623,6 +675,11 @@ def main():
     parser.add_argument("--gif-stride", type=positive_integer, default=DEFAULT_GIF_STRIDE)
     parser.add_argument("--workers", type=positive_integer, default=1)
     parser.add_argument("--fps", type=positive_integer, default=DEFAULT_FPS)
+    parser.add_argument(
+        "--slice-z",
+        type=finite_limit,
+        help="Analyze edge_aux_2 on this z slice of 3D output.",
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--skip-gifs", action="store_true")
@@ -640,13 +697,21 @@ def main():
         parser.error("--x-limits requires MIN < MAX")
     if args.y_limits is not None and args.y_limits[0] >= args.y_limits[1]:
         parser.error("--y-limits requires MIN < MAX")
-    output_folder = (
-        args.output_dir.expanduser().resolve()
-        if args.output_dir is not None
-        else SCRIPT_FOLDER
-        / "outputs"
-        / f"{sweep_folder.name}_upper_half_center_{fraction_tag(args.center_threshold_fraction)}"
-    )
+    if args.output_dir is not None:
+        output_folder = args.output_dir.expanduser().resolve()
+    else:
+        output_parent = (
+            SCRIPT_FOLDER
+            if args.slice_z is None
+            else SCRIPT_FOLDER.parent / "ritta_plotting_3D"
+        )
+        method_tag = "upper_half" if args.slice_z is None else "slice_upper_half"
+        output_folder = (
+            output_parent
+            / "outputs"
+            / f"{sweep_folder.name}_{method_tag}_center_"
+            f"{fraction_tag(args.center_threshold_fraction)}"
+        )
     output_folder.mkdir(parents=True, exist_ok=True)
 
     runs = discover_runs(sweep_folder, args.cases)
@@ -655,6 +720,9 @@ def main():
 
     tasks = []
     run_info = []
+    method_version = (
+        METHOD_VERSION if args.slice_z is None else SLICE_METHOD_VERSION
+    )
     for run_folder in runs:
         metadata = simulation_metadata(run_folder, config)
         simulation_config = Path(metadata["source"])
@@ -666,13 +734,24 @@ def main():
         ):
             raise ValueError(f"Incomplete simulation metadata for {run_folder}")
         reject_explicit_dt(simulation_config)
+        origin_3d = None
+        if args.slice_z is not None:
+            three_d_folder = SCRIPT_FOLDER.parent / "ritta_plotting_3D"
+            if str(three_d_folder) not in sys.path:
+                sys.path.insert(0, str(three_d_folder))
+            from slice_vortex_identification import simulation_origin_3d
+
+            origin_3d = simulation_origin_3d(simulation_config)
         tau = simulation_parameter(run_folder, config, "b_f_tau")
         if not math.isfinite(tau) or tau <= 0.0:
             raise ValueError(f"Invalid b_f_tau in {simulation_config}: {tau}")
         frames = discover_frames(run_folder, config)
         selected = list(enumerate(frames))[:: args.analysis_stride]
         digest = config_digest(
-            config_path, simulation_config, args.center_threshold_fraction
+            config_path,
+            simulation_config,
+            args.center_threshold_fraction,
+            args.slice_z,
         )
         run_info.append(
             {"name": run_folder.name, "run_folder": run_folder, "tau": tau}
@@ -686,6 +765,9 @@ def main():
                     "path": path,
                     "config": config,
                     "metadata": metadata,
+                    "method_version": method_version,
+                    "slice_z": args.slice_z,
+                    "origin_3d": origin_3d,
                     "center_fraction": args.center_threshold_fraction,
                     "config_digest": digest,
                 }
@@ -696,6 +778,8 @@ def main():
     print(f"Cases:             {len(run_info)}", flush=True)
     print(f"Selected frames:   {len(tasks)}", flush=True)
     print(f"Frame workers:     {min(args.workers, len(tasks))}", flush=True)
+    if args.slice_z is not None:
+        print(f"Slice:             edge_aux_2 at z={args.slice_z:g}", flush=True)
     print("Circulation:       signed integral over y > 0", flush=True)
     print(
         "Center mask:      "
@@ -765,7 +849,11 @@ def main():
     method_path.write_text(
         json.dumps(
             {
-                "method_version": METHOD_VERSION,
+                "method_version": method_version,
+                "slice_z": args.slice_z,
+                "vorticity_component": (
+                    "edge_aux" if args.slice_z is None else "edge_aux_2"
+                ),
                 "circulation_domain": "y > 0",
                 "circulation_sign": "signed",
                 "center_threshold_fraction": args.center_threshold_fraction,

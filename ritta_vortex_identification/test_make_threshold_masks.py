@@ -13,6 +13,7 @@ from make_threshold_masks import (
     read_extrema_tracks,
     save_extrema_track_plot,
     save_pair_interaction_plot,
+    track_reference_slope,
     write_extrema_tracks,
 )
 
@@ -31,6 +32,11 @@ def record(frame_index: int, time: float, x: float, y: float = 0.0) -> dict:
 
 
 class AssignExtremaTracksTests(unittest.TestCase):
+    def test_reference_slope_uses_the_displayed_time_axis(self) -> None:
+        self.assertAlmostEqual(track_reference_slope(), 0.0795)
+        self.assertAlmostEqual(track_reference_slope(0.1), 0.795)
+        self.assertAlmostEqual(track_reference_slope(0.02), 3.975)
+
     def test_saved_tracks_round_trip_for_plots_only(self) -> None:
         tracked = record(0, 0.0, 1.0)
         untracked = record(1, 1.0, 2.0)

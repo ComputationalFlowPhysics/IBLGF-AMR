@@ -80,7 +80,7 @@ run_case() {
 
     run_name="$(basename "$run_dir")"
     circulation_output="ritta_plotting_3D/outputs/${sweep_name}_${run_name}_circulation"
-    vorticity_output="ritta_plotting_3D/outputs/${sweep_name}_${run_name}_vorticity_0p02_domain_outline"
+    vorticity_output="ritta_plotting_3D/outputs/${sweep_name}_${run_name}_vorticity_0p02"
     csv_path="$circulation_output/leading_vortex_circulation.csv"
     log_path="$log_dir/${run_name}.log"
 
@@ -108,7 +108,6 @@ run_case() {
             "$vorticity_stride" \
             --field vorticity \
             --vorticity-threshold-fraction 0.02 \
-            --show-domain-boundary \
             --output-dir "$vorticity_output" \
             --resume \
             --workers "$frame_workers"

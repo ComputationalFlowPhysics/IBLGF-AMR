@@ -34,6 +34,7 @@ from plot_vorticity import browse_frames, image_extent
 
 
 EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
+TRACK_REFERENCE_SLOPE = 0.0795
 TRACK_COLUMNS = (
     "frame_index",
     "frame_name",
@@ -44,6 +45,15 @@ TRACK_COLUMNS = (
     "y",
     "peak_vorticity",
 )
+
+
+def track_reference_slope(forcing_frequency: Optional[float] = None) -> float:
+    """Return dx/dt for time plots or dx/dt* when t* = f t."""
+    if forcing_frequency is None:
+        return TRACK_REFERENCE_SLOPE
+    if not math.isfinite(forcing_frequency) or forcing_frequency <= 0.0:
+        raise ValueError("forcing_frequency must be finite and greater than zero")
+    return TRACK_REFERENCE_SLOPE / forcing_frequency
 
 
 def remove_small_regions(
@@ -664,6 +674,27 @@ def save_extrema_track_plot(
                 textcoords="offset points",
                 fontsize=7,
             )
+
+    if coordinate == "x" and tracks:
+        displayed_slope = track_reference_slope(forcing_frequency)
+        horizontal_limits = axis.get_xlim()
+        reference_horizontal = np.asarray(horizontal_limits, dtype=float)
+        axis.plot(
+            reference_horizontal,
+            displayed_slope * reference_horizontal,
+            color="black",
+            linestyle=":",
+            linewidth=1.5,
+            label=(
+                f"reference slope {TRACK_REFERENCE_SLOPE:g}"
+                if forcing_frequency is None
+                else (
+                    f"reference slope {TRACK_REFERENCE_SLOPE:g}/f "
+                    f"= {displayed_slope:g}"
+                )
+            ),
+        )
+        axis.set_xlim(horizontal_limits)
 
     if forcing_frequency is None:
         horizontal_name = "simulation time"

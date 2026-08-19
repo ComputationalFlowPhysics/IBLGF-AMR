@@ -5,7 +5,7 @@
 field_name = "edge_aux"                 # HDF5 component used as the 2D vorticity field.
 hdf5_glob = "flowTime_*.hdf5"           # Filename pattern searched under RUN_FOLDER/output.
 simulation_config = ""                  # Run-relative config path; blank finds the only config* file.
-simulation_config_glob = "config*"      # Pattern used when automatically finding the simulation config.
+simulation_config_glob = "*.cfg"      # Pattern used when automatically finding the simulation config.
 fallback_time_spacing = nan             # Backup spacing between listed frames; nan requires physical metadata.
 cfl = nan                               # CFL override; nan reads cfl from the simulation config.
 dx_base = nan                           # Base-grid spacing override; nan reads dx_base from the run config.
@@ -14,7 +14,7 @@ origin_x_index = nan                    # Base-level x-origin index override; na
 origin_y_index = nan                    # Base-level y-origin index override; nan reads the domain center.
 
 [hmaxima]
-h = 1.0                                 # Minimum vorticity prominence kept as an h-maximum.
+h = 0.5                               # Minimum vorticity prominence kept as an h-maximum.
 connectivity = 8                        # Number of connected neighbors; the equations require 8.
 reconstruction_tolerance = 1.0e-10      # Infinity-norm stopping tolerance for grayscale reconstruction.
 h_mask_tolerance = 1.0e-8               # Numerical slack when checking whether the h-dome reaches h.
@@ -49,7 +49,7 @@ gtol = 1.0e-9                          # SciPy stopping tolerance for the gradie
 [tracking]
 max_displacement = 0.5                 # L: largest residual allowed from an existing track's predicted center.
 new_track_max_displacement = 0.5       # L_new: largest displacement allowed when confirming a new track.
-max_missed_frames = 10                 # Keep a confirmed extrema track alive across this many missed frames.
+max_missed_frames = 20                 # Keep a confirmed extrema track alive across this many missed frames.
 minimum_track_points = 10              # Discard extrema tracks with fewer than this many observed points.
 velocity_history_length = 3            # H: average the last H observed velocities when predicting a track.
 

@@ -2,6 +2,8 @@
 
 import argparse
 import math
+import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import List, Tuple
 
@@ -260,6 +262,120 @@ def read_candidates(
     ]
 
 
+def process_frame_to_shard(task: tuple) -> tuple:
+    """Fit one frame in an independent process and save a small HDF5 shard."""
+    (
+        source_index,
+        frame_path,
+        group_name,
+        config,
+        metadata,
+        settings,
+        hmaxima_path,
+        regions_path,
+        shard_path,
+    ) = task
+    frame = load_vorticity_frame(
+        frame_path,
+        source_index,
+        config,
+        metadata,
+    )
+    with (
+        h5py.File(hmaxima_path, "r") as maxima,
+        h5py.File(regions_path, "r") as regions,
+    ):
+        candidates = read_candidates(maxima, regions, group_name)
+    results = [fit_candidate(frame, candidate, config, settings) for candidate in candidates]
+    with h5py.File(shard_path, "w") as shard:
+        save_frame_results(
+            shard.create_group(group_name),
+            frame,
+            candidates,
+            results,
+        )
+    return (
+        group_name,
+        frame_path.name,
+        sum(result["success"] for result in results),
+        len(results),
+        shard_path,
+    )
+
+
+def write_output_metadata(
+    output: h5py.File,
+    config_file: Path,
+    hmaxima_path: Path,
+    regions_path: Path,
+    settings: dict,
+    workers: int,
+    group_names: List[str],
+) -> None:
+    """Write metadata shared by serial and parallel fitting."""
+    output.attrs["schema"] = "ritta_circular_gaussian_dipole_fits_v1"
+    output.attrs["config_file"] = str(config_file.expanduser().resolve())
+    output.attrs["source_hmaxima"] = str(hmaxima_path.resolve())
+    output.attrs["source_regions"] = str(regions_path.resolve())
+    output.attrs["parameter_order"] = "gamma,x_c,d,sigma"
+    output.attrs["loss"] = "soft_l1"
+    output.attrs["jacobian"] = "SciPy numerical differentiation"
+    output.attrs["workers"] = workers
+    for name, value in settings.items():
+        output.attrs[name] = value
+    write_string_dataset(output, "frame_order", group_names)
+
+
+def calculate_frames_parallel(
+    frame_items: list,
+    config: dict,
+    metadata: dict,
+    settings: dict,
+    hmaxima_path: Path,
+    regions_path: Path,
+    fits_path: Path,
+    workers: int,
+) -> None:
+    """Fit independent frames concurrently, then merge shards in frame order."""
+    with tempfile.TemporaryDirectory(
+        prefix="vortex-fit-shards-",
+        dir=fits_path.parent,
+    ) as temporary:
+        temporary_folder = Path(temporary)
+        tasks = [
+            (
+                source_index,
+                frame_path,
+                group_name,
+                config,
+                metadata,
+                settings,
+                hmaxima_path,
+                regions_path,
+                temporary_folder / f"{index:08d}.h5",
+            )
+            for index, (source_index, frame_path, group_name) in enumerate(frame_items)
+        ]
+        completed = []
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            for index, result in enumerate(
+                executor.map(process_frame_to_shard, tasks),
+                start=1,
+            ):
+                group_name, filename, success_count, result_count, shard_path = result
+                completed.append((group_name, shard_path))
+                print(
+                    f"[{index}/{len(frame_items)}] {filename}: "
+                    f"{success_count}/{result_count} fits successful",
+                    flush=True,
+                )
+
+        with h5py.File(fits_path, "a") as output:
+            for group_name, shard_path in completed:
+                with h5py.File(shard_path, "r") as shard:
+                    shard.copy(group_name, output)
+
+
 def load_preview_frame(
     frame_path: Path,
     frame_index: int,
@@ -302,7 +418,16 @@ def main() -> int:
         type=Path,
         help="Write fits.h5 to this path instead of the standard result folder.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Fit this many independent frames concurrently (default: 1).",
+    )
     args = parser.parse_args()
+
+    if args.workers < 1:
+        parser.error("--workers must be a positive integer.")
 
     config = load_config(args.config_file)
     if args.boundary_fraction is not None:
@@ -342,32 +467,63 @@ def main() -> int:
         group_names = read_frame_order(maxima)
         if group_names != read_frame_order(regions):
             raise ValueError("Frame order differs between hmaxima.h5 and regions.h5.")
+        source_filenames = [
+            str(maxima[group_name].attrs["source_filename"])
+            for group_name in group_names
+        ]
+    frame_items = []
+    for group_name, source_filename in zip(group_names, source_filenames):
+        if source_filename not in paths_by_name:
+            raise FileNotFoundError(f"Original frame is missing: {source_filename}")
+        frame_items.append((
+            source_indices_by_name[source_filename],
+            paths_by_name[source_filename],
+            group_name,
+        ))
 
-        with h5py.File(fits_path, "w") as output:
-            output.attrs["schema"] = "ritta_circular_gaussian_dipole_fits_v1"
-            output.attrs["config_file"] = str(args.config_file.expanduser().resolve())
-            output.attrs["source_hmaxima"] = str(hmaxima_path.resolve())
-            output.attrs["source_regions"] = str(regions_path.resolve())
-            output.attrs["parameter_order"] = "gamma,x_c,d,sigma"
-            output.attrs["loss"] = "soft_l1"
-            output.attrs["jacobian"] = "SciPy numerical differentiation"
-            for name, value in settings.items():
-                output.attrs[name] = value
-            write_string_dataset(output, "frame_order", group_names)
+    worker_count = min(args.workers, len(frame_items))
+    with h5py.File(fits_path, "w") as output:
+        write_output_metadata(
+            output,
+            args.config_file,
+            hmaxima_path,
+            regions_path,
+            settings,
+            worker_count,
+            group_names,
+        )
 
-            for frame_index, group_name in enumerate(group_names):
-                source_filename = str(maxima[group_name].attrs["source_filename"])
-                if source_filename not in paths_by_name:
-                    raise FileNotFoundError(f"Original frame is missing: {source_filename}")
+    print(f"Gaussian-fit workers: {worker_count}", flush=True)
+    if worker_count > 1:
+        calculate_frames_parallel(
+            frame_items,
+            config,
+            metadata,
+            settings,
+            hmaxima_path,
+            regions_path,
+            fits_path,
+            worker_count,
+        )
+    else:
+        with (
+            h5py.File(hmaxima_path, "r") as maxima,
+            h5py.File(regions_path, "r") as regions,
+            h5py.File(fits_path, "a") as output,
+        ):
+            for frame_index, (source_index, frame_path, group_name) in enumerate(frame_items):
                 frame = load_vorticity_frame(
-                    paths_by_name[source_filename], source_indices_by_name[source_filename], config, metadata
+                    frame_path,
+                    source_index,
+                    config,
+                    metadata,
                 )
                 candidates = read_candidates(maxima, regions, group_name)
                 results = [fit_candidate(frame, candidate, config, settings) for candidate in candidates]
                 save_frame_results(output.create_group(group_name), frame, candidates, results)
                 success_count = sum(result["success"] for result in results)
                 print(
-                    f"[{frame_index + 1}/{len(group_names)}] {source_filename}: "
+                    f"[{frame_index + 1}/{len(group_names)}] {frame_path.name}: "
                     f"{success_count}/{len(results)} fits successful"
                 )
 

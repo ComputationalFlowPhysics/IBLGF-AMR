@@ -24,6 +24,17 @@ python 04_positive_vortex_metrics.py RUN_FOLDER CONFIG_FILE
 python 05_plot_time_series.py RUN_FOLDER CONFIG_FILE
 ```
 
+Stages 1, 3, and 4 accept `--workers N`. Their per-frame calculations are
+independent and run concurrently; HDF5 shards and metric records are merged in
+the original numerical frame order. Gaussian equations, optimizer settings,
+AMR-cell circulation integration, and serial temporal tracking are unchanged.
+Keep OpenMP and numerical-library threads at one when using multiple workers:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python 03_fit_vortices.py RUN_FOLDER CONFIG_FILE --workers 128 --no-preview
+```
+
 Do not skip stages. Each one reads the saved result from the previous stage.
 Stage 2 reads `Re` from the run's copied simulation config and uses the saved
 nondimensional simulation time as the vortex age. Its buffer widths grow diffusively as
@@ -194,6 +205,9 @@ python run_all.py PARENT_FOLDER CONFIG_FILE --batch
 ```
 
 Add `--stride 5` to either `run_all.py` command to process every fifth frame.
+Add `--workers 128` to use up to 128 frame workers in Stages 1, 3, and 4.
+Run one `run_all.py` controller process; do not start one complete pipeline per
+MPI rank because those processes would target the same result files.
 
 These run stages 1–4 without previews. Each dataset gets a folder under
 `outputs/pipeline_results/` containing `hmaxima.h5`, `regions.h5`, `fits.h5`,

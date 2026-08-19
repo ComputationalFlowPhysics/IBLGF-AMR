@@ -187,6 +187,11 @@ def main() -> int:
     parser.add_argument("--inset-x-max", type=float, default=25.0)
     parser.add_argument("--inset-y-min", type=float, default=0.78)
     parser.add_argument("--inset-y-max", type=float, default=0.81)
+    parser.add_argument(
+        "--reference-slope",
+        type=float,
+        help="Override time_series.reference_slope for the x-displacement plot.",
+    )
     args = parser.parse_args()
     inset_values = (
         args.inset_x_min,
@@ -200,6 +205,8 @@ def main() -> int:
         parser.error("--inset-x-min must be smaller than --inset-x-max")
     if args.inset_y_min >= args.inset_y_max:
         parser.error("--inset-y-min must be smaller than --inset-y-max")
+    if args.reference_slope is not None and not math.isfinite(args.reference_slope):
+        parser.error("--reference-slope must be finite")
     if args.normalized_zoom is not None:
         if not all(math.isfinite(value) for value in args.normalized_zoom):
             parser.error("--normalized-zoom limits must be finite")
@@ -294,7 +301,9 @@ def main() -> int:
         "Positive-vortex x displacement versus simulation time",
         figure_size,
         reference=(
-            finite_setting(config, "reference_slope"),
+            args.reference_slope
+            if args.reference_slope is not None
+            else finite_setting(config, "reference_slope"),
             finite_setting(config, "reference_anchor_time"),
             finite_setting(config, "reference_anchor_displacement"),
         ),

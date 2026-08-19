@@ -3,6 +3,7 @@
 import argparse
 import csv
 import math
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -177,6 +178,98 @@ def fit_rows(group: h5py.Group) -> List[dict]:
     ]
 
 
+def measure_frame(task: tuple) -> List[dict]:
+    """Measure all fitted candidates in one frame using independent HDF5 handles."""
+    (
+        frame_index,
+        group_name,
+        frame_name,
+        frame_path,
+        source_index,
+        config,
+        metadata,
+        hmaxima_path,
+        regions_path,
+        fits_path,
+    ) = task
+    with (
+        h5py.File(hmaxima_path, "r") as maxima,
+        h5py.File(regions_path, "r") as regions,
+        h5py.File(fits_path, "r") as fits,
+    ):
+        maximum_ids = maxima[group_name]["candidate_ids"][:]
+        region_ids = regions[group_name]["candidate_ids"][:]
+        fitted = fit_rows(fits[group_name])
+    fit_ids = np.asarray([item["candidate_id"] for item in fitted])
+    if not np.array_equal(maximum_ids, region_ids) or not np.array_equal(
+        maximum_ids,
+        fit_ids,
+    ):
+        raise ValueError(
+            f"Candidate IDs disagree among saved stages for {frame_name}."
+        )
+
+    frame = load_vorticity_frame(
+        frame_path,
+        source_index,
+        config,
+        metadata,
+        include_cells=True,
+    )
+    frame_records = []
+    for fit in fitted:
+        parameters = fit["parameters"]
+        radius = fit["radius"]
+        positive_center = fit["positive_center"]
+        usable = (
+            fit["fit_success"]
+            and np.all(np.isfinite(parameters))
+            and math.isfinite(radius)
+        )
+        if usable:
+            # Measure original visible AMR cells, never the fitted Gaussian values.
+            circulation, x_center, y_center = positive_metrics(
+                frame["cells"],
+                positive_center[0],
+                positive_center[1],
+                radius,
+            )
+        else:
+            circulation, x_center, y_center = math.nan, math.nan, math.nan
+        frame_records.append({
+            "frame_index": frame_index,
+            "frame_name": frame_name,
+            "time": frame["time"],
+            "candidate_id": fit["candidate_id"],
+            "vortex_id": "",
+            "fit_success": fit["fit_success"],
+            "boundary_radius": radius,
+            "circulation_positive": circulation,
+            "x_center_positive": x_center,
+            "y_center_positive": y_center,
+            "x_displacement": x_center,
+            "_fit_x": float(positive_center[0]),
+            "_fit_y": float(positive_center[1]),
+        })
+
+    if not frame_records:
+        # Keep an empty row so later plots retain this frame and show a gap.
+        frame_records.append({
+            "frame_index": frame_index,
+            "frame_name": frame_name,
+            "time": frame["time"],
+            "candidate_id": "",
+            "vortex_id": "",
+            "fit_success": False,
+            "boundary_radius": math.nan,
+            "circulation_positive": math.nan,
+            "x_center_positive": math.nan,
+            "y_center_positive": math.nan,
+            "x_displacement": math.nan,
+        })
+    return frame_records
+
+
 def write_metrics(path: Path, records: List[dict]) -> None:
     """Write the final per-frame, per-vortex CSV table."""
     with path.open("w", newline="") as handle:
@@ -206,7 +299,16 @@ def main() -> int:
         type=Path,
         help="Output CSV path (defaults to positive_vortex_metrics.csv in the run's results directory).",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Measure this many independent frames concurrently (default: 1).",
+    )
     args = parser.parse_args()
+
+    if args.workers < 1:
+        parser.error("--workers must be a positive integer.")
 
     config = load_config(args.config_file)
     output_folder = result_folder(args.run_folder)
@@ -238,7 +340,6 @@ def main() -> int:
     source_indices_by_name = {path.name: index for index, path in enumerate(frame_paths)}
     metadata = simulation_metadata(args.run_folder, config)
     records_by_frame = []
-    ordered_frame_names = []
     tracking_config = config.get("tracking", {})
     max_displacement = float(tracking_config.get("max_displacement", 0.5))
     new_track_max_displacement = float(tracking_config.get("new_track_max_displacement", 0.5))
@@ -247,7 +348,7 @@ def main() -> int:
     if not math.isfinite(new_track_max_displacement) or new_track_max_displacement <= 0.0:
         raise ValueError("[tracking] new_track_max_displacement must be finite and greater than zero.")
 
-    # All three saved stages must describe exactly the same frames and candidate IDs.
+    # All three saved stages must describe exactly the same ordered frame list.
     with (
         h5py.File(hmaxima_path, "r") as maxima,
         h5py.File(regions_path, "r") as regions,
@@ -256,73 +357,58 @@ def main() -> int:
         group_names = read_frame_order(maxima)
         if group_names != read_frame_order(regions) or group_names != read_frame_order(fits):
             raise ValueError("Frame order differs among hmaxima.h5, regions.h5, and fits.h5.")
+        ordered_frame_names = [
+            str(maxima[group_name].attrs["source_filename"])
+            for group_name in group_names
+        ]
 
-        for frame_index, group_name in enumerate(group_names):
-            frame_name = str(maxima[group_name].attrs["source_filename"])
-            ordered_frame_names.append(frame_name)
-            if frame_name not in paths_by_name:
-                raise FileNotFoundError(f"Original frame is missing: {frame_name}")
-            maximum_ids = maxima[group_name]["candidate_ids"][:]
-            region_ids = regions[group_name]["candidate_ids"][:]
-            fitted = fit_rows(fits[group_name])
-            fit_ids = np.asarray([item["candidate_id"] for item in fitted])
-            if not np.array_equal(maximum_ids, region_ids) or not np.array_equal(maximum_ids, fit_ids):
-                raise ValueError(f"Candidate IDs disagree among saved stages for {frame_name}.")
+    tasks = []
+    for frame_index, (group_name, frame_name) in enumerate(
+        zip(group_names, ordered_frame_names)
+    ):
+        if frame_name not in paths_by_name:
+            raise FileNotFoundError(f"Original frame is missing: {frame_name}")
+        tasks.append((
+            frame_index,
+            group_name,
+            frame_name,
+            paths_by_name[frame_name],
+            source_indices_by_name[frame_name],
+            config,
+            metadata,
+            hmaxima_path,
+            regions_path,
+            fits_path,
+        ))
 
-            frame = load_vorticity_frame(
-                paths_by_name[frame_name],
-                source_indices_by_name[frame_name],
-                config,
-                metadata,
-                include_cells=True,
-            )
-            frame_records = []
-            for fit in fitted:
-                parameters = fit["parameters"]
-                radius = fit["radius"]
-                positive_center = fit["positive_center"]
-                usable = fit["fit_success"] and np.all(np.isfinite(parameters)) and math.isfinite(radius)
-                if usable:
-                    # Measure the original visible AMR cells, never the fitted Gaussian values.
-                    circulation, x_center, y_center = positive_metrics(
-                        frame["cells"], positive_center[0], positive_center[1], radius
-                    )
-                else:
-                    circulation, x_center, y_center = math.nan, math.nan, math.nan
-                frame_records.append({
-                    "frame_index": frame_index,
-                    "frame_name": frame_name,
-                    "time": frame["time"],
-                    "candidate_id": fit["candidate_id"],
-                    "vortex_id": "",
-                    "fit_success": fit["fit_success"],
-                    "boundary_radius": radius,
-                    "circulation_positive": circulation,
-                    "x_center_positive": x_center,
-                    "y_center_positive": y_center,
-                    "x_displacement": x_center,
-                    "_fit_x": float(positive_center[0]),
-                    "_fit_y": float(positive_center[1]),
-                })
-
-            if not frame_records:
-                # Keep an empty row so later plots retain this frame and show a gap.
-                frame_records.append({
-                    "frame_index": frame_index,
-                    "frame_name": frame_name,
-                    "time": frame["time"],
-                    "candidate_id": "",
-                    "vortex_id": "",
-                    "fit_success": False,
-                    "boundary_radius": math.nan,
-                    "circulation_positive": math.nan,
-                    "x_center_positive": math.nan,
-                    "y_center_positive": math.nan,
-                    "x_displacement": math.nan,
-                })
+    worker_count = min(args.workers, len(tasks))
+    print(f"Circulation-measurement workers: {worker_count}", flush=True)
+    if worker_count > 1:
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            iterator = executor.map(measure_frame, tasks)
+            for frame_index, frame_records in enumerate(iterator):
+                records_by_frame.append(frame_records)
+                valid_count = sum(
+                    math.isfinite(record["circulation_positive"])
+                    for record in frame_records
+                )
+                print(
+                    f"[{frame_index + 1}/{len(tasks)}] "
+                    f"{ordered_frame_names[frame_index]}: {valid_count} measured vortices",
+                    flush=True,
+                )
+    else:
+        for frame_index, task in enumerate(tasks):
+            frame_records = measure_frame(task)
             records_by_frame.append(frame_records)
-            valid_count = sum(math.isfinite(record["circulation_positive"]) for record in frame_records)
-            print(f"[{frame_index + 1}/{len(group_names)}] {frame_name}: {valid_count} measured vortices")
+            valid_count = sum(
+                math.isfinite(record["circulation_positive"])
+                for record in frame_records
+            )
+            print(
+                f"[{frame_index + 1}/{len(tasks)}] "
+                f"{ordered_frame_names[frame_index]}: {valid_count} measured vortices"
+            )
 
     assign_vortex_tracks(records_by_frame, max_displacement, new_track_max_displacement)
     all_records = [record for frame_records in records_by_frame for record in frame_records]

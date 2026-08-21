@@ -37,7 +37,8 @@ __global__ void sum_batches(
     const cuDoubleComplex* input,
     cuDoubleComplex* output,
     int n_batches,
-    size_t size_per_batch);
+    size_t size_per_batch,
+    bool first_flush);
 
 // Scale complex array on device: data[i] *= alpha
 __global__ void scale_complex(
@@ -309,7 +310,7 @@ class Convolution_GPU
     Convolution_GPU(Convolution_GPU&& other) = default;
     Convolution_GPU& operator=(const Convolution_GPU& other) & = delete;
     Convolution_GPU& operator=(Convolution_GPU&& other) & = default;
-    ~Convolution_GPU() 
+    ~Convolution_GPU()
     {
         if (d_f0_ptrs_) cudaFree(d_f0_ptrs_);
         if (d_f0_sizes_) cudaFree(d_f0_sizes_);
@@ -374,10 +375,11 @@ class Convolution_GPU
     {
         number_fwrd_executed = 0;
         current_batch_size_ = 0;
-        std::fill(fft_backward_.input().begin(), fft_backward_.input().end(), 0);
-        // Clean device buffers so no stale accumulation carries between solves
-        cudaMemset(fft_backward_.input_cu(), 0, fft_backward_.input().size() * sizeof(cufftDoubleComplex));
-        cudaMemset(fft_forward1_batch.result_cu(), 0, fft_forward1_batch.result_size() * sizeof(cufftDoubleComplex));
+        first_flush_ = true;
+        // result_cu_ is always fully overwritten by prod_complex_add_ptr before sum_batches reads
+        // it, so no pre-zeroing is needed.  The backward input accumulator is handled by
+        // first_flush_: sum_batches writes (not adds) on the first flush each solve, so that
+        // memset is gone too.
     }
 
     template<typename Source, typename BlockType, class Kernel>
@@ -485,16 +487,19 @@ class Convolution_GPU
             current_batch_size_,
             size_per_fft);
         
-        // Sum batches into backward input on same stream
+        // Sum batches into backward input on same stream.
+        // first_flush_=true means write directly (no pre-zero of input_cu_ needed).
         sum_batches<<<numBlocksSum, blockSize, 0, fft_forward1_batch.stream()>>>(
-            fft_forward1_batch.result_cu(), 
-            fft_backward_.input_cu(), 
-            current_batch_size_, 
-            size_per_fft);
-        
+            fft_forward1_batch.result_cu(),
+            fft_backward_.input_cu(),
+            current_batch_size_,
+            size_per_fft,
+            first_flush_);
+        first_flush_ = false;
+
         // Record completion event for safe reuse and downstream synchronization
         fft_forward1_batch.record_batch_done(fft_forward1_batch.stream());
-        
+
         // Reset batch counter and clear pointers
         current_batch_size_ = 0;
         fft_forward1_batch.f0_ptrs().clear();
@@ -602,6 +607,7 @@ class Convolution_GPU
         0; //register the number of forward procedure applied, if no forward applied, then don't need to apply backward one as well.
     int current_batch_size_ = 0;
     int max_batch_size_ = 0;
+    bool first_flush_ = true;
 
   private:
     dims_t padded_dims_;

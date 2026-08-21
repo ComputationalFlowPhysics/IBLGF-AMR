@@ -65,28 +65,22 @@ prod_complex_add_ptr(const cuDoubleComplex* const* f0_ptrs, const cuDoubleComple
 }
 
 __global__ void
-sum_batches(const cuDoubleComplex* input, cuDoubleComplex* output, int batch_size, size_t size)
+sum_batches(const cuDoubleComplex* input, cuDoubleComplex* output, int batch_size, size_t size, bool first_flush)
 {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // Grid-stride loop for better load balancing
     size_t stride = blockDim.x * gridDim.x;
-    
+
     for (size_t i = idx; i < size; i += stride)
     {
         cuDoubleComplex sum = make_cuDoubleComplex(0.0, 0.0);
-        
-        // Unroll small batch loops for better performance
         #pragma unroll 4
         for (int b = 0; b < batch_size; ++b)
         {
-            // Use __ldg for read-only input data
             sum = cuCadd(sum, __ldg(&input[i + b * size]));
         }
-        
-        // Atomic add for accumulation (safer for concurrent access)
-        cuDoubleComplex old_val = output[i];
-        output[i] = cuCadd(old_val, sum);
+        // On first flush, write directly; otherwise accumulate.
+        // This lets callers skip zeroing the output buffer before the first batch.
+        output[i] = first_flush ? sum : cuCadd(output[i], sum);
     }
 }
 

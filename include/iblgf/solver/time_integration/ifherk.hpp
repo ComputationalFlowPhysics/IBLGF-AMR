@@ -522,7 +522,8 @@ class Ifherk
 
         force_type All_sum_f(ib.force().size(), tmp_coord);
         force_type All_sum_f_glob(ib.force().size(), tmp_coord);
-        this->template ComputeForcing<u_type, p_type, u_i_type, d_i_type>(All_sum_f);
+        if (ib.size() > 0)
+            this->template ComputeForcing<u_type, p_type, u_i_type, d_i_type>(All_sum_f);
 
         if (ib.size() > 0)
         {
@@ -1475,7 +1476,7 @@ private:
         add<face_aux_type, face_aux2_type>(-1.0);
 
         // IB
-        if (std::fabs(_alpha)>1e-14)
+        if (std::fabs(_alpha)>1e-14 && domain_->ib().size() > 0)
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
 
         domain_->client_communicator().barrier();

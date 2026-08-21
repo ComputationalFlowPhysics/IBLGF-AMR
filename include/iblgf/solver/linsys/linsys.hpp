@@ -112,6 +112,8 @@ class LinSysSolver
     template<class Field>
     void ib_solve(float_type alpha, float_type t)
     {
+        if (ib_->size() == 0) return;
+
         // right hand side
 	real_coordinate_type tmp_coord(0.0);
         force_type uc(ib_->size(), tmp_coord);

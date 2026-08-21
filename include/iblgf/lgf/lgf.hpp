@@ -26,6 +26,7 @@
 #ifdef IBLGF_COMPILE_CUDA
 #include <cufft.h>
 #include <cuda_runtime.h>
+#include <iblgf/utilities/cuda_check.hpp>
 #endif
 
 namespace iblgf
@@ -119,8 +120,8 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
             //move dft to new location on gpu
             //dft is pointer to device
             // entry->host = std::make_unique<complex_vector_gpu_t>(std::move(*dft));
-            cudaMalloc(&(entry->device), entry->size * sizeof(cufftDoubleComplex));
-            cudaMemcpy(entry->device, dft, entry->size * sizeof(cufftDoubleComplex), cudaMemcpyDeviceToDevice);
+            IBLGF_CUDA_CHECK(cudaMalloc(&(entry->device), entry->size * sizeof(cufftDoubleComplex)));
+            IBLGF_CUDA_CHECK(cudaMemcpy(entry->device, dft, entry->size * sizeof(cufftDoubleComplex), cudaMemcpyDeviceToDevice));
             entry->host = nullptr; // host copy not needed
             auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
                 k_, std::move(entry));

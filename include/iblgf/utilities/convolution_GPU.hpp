@@ -16,6 +16,7 @@
 #include <cstring>
 #include <cufft.h>
 #include <iblgf/types.hpp>
+#include <iblgf/utilities/cuda_check.hpp>
 #include <vector>
 
 namespace iblgf
@@ -334,8 +335,8 @@ class Convolution_GPU
     , um_capacity_((batch_size > 0 ? batch_size : 1))
     {
         // Allocate device memory for LGF pointers and sizes
-        cudaMalloc(&d_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*));
-        cudaMalloc(&d_f0_sizes_, um_capacity_ * sizeof(size_t));
+        IBLGF_CUDA_CHECK(cudaMalloc(&d_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*)));
+        IBLGF_CUDA_CHECK(cudaMalloc(&d_f0_sizes_, um_capacity_ * sizeof(size_t)));
     }
 
     dims_t helper_next_pow_2(dims_t v)
@@ -486,7 +487,8 @@ class Convolution_GPU
             d_f0_sizes_,
             current_batch_size_,
             size_per_fft);
-        
+        IBLGF_CUDA_CHECK_LAST_ERROR();
+
         // Sum batches into backward input on same stream.
         // first_flush_=true means write directly (no pre-zero of input_cu_ needed).
         sum_batches<<<numBlocksSum, blockSize, 0, fft_forward1_batch.stream()>>>(
@@ -495,6 +497,7 @@ class Convolution_GPU
             current_batch_size_,
             size_per_fft,
             first_flush_);
+        IBLGF_CUDA_CHECK_LAST_ERROR();
         first_flush_ = false;
 
         // Record completion event for safe reuse and downstream synchronization
@@ -538,6 +541,7 @@ class Convolution_GPU
         int numBlocks = (size_per_fft + blockSize - 1) / blockSize;
         scale_complex<<<numBlocks, blockSize, 0, fft_backward_.stream()>>>(
             fft_backward_.input_cu(), size_per_fft, scale);
+        IBLGF_CUDA_CHECK_LAST_ERROR();
 
         // Execute backward transform directly from device input
         fft_backward_.execute_device();
@@ -557,10 +561,11 @@ class Convolution_GPU
                 padded_dims_next_pow_2_[0], padded_dims_next_pow_2_[1],
                 ext[0], ext[1],
                 ext[0], ext[1], ext[2]);
+            IBLGF_CUDA_CHECK_LAST_ERROR();
 
-            cudaStreamSynchronize(fft_backward_.stream());
-            cudaMemcpy(_target.data().data(), _target.device_ptr(),
-                _target.data().size() * sizeof(float_type), cudaMemcpyDeviceToHost);
+            IBLGF_CUDA_CHECK(cudaStreamSynchronize(fft_backward_.stream()));
+            IBLGF_CUDA_CHECK(cudaMemcpy(_target.data().data(), _target.device_ptr(),
+                _target.data().size() * sizeof(float_type), cudaMemcpyDeviceToHost));
             return;
         }
 #endif

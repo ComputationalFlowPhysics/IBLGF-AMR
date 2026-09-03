@@ -1363,6 +1363,8 @@ class Ifherk
     template <typename F>
     void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
     {
+        const bool do_pass3 = (l == domain_->tree()->base_level());
+
         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
         {
             if (!it->locally_owned())
@@ -1375,12 +1377,9 @@ class Ifherk
                         it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
+                continue;
             }
-        }
 
-        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-        {
-            if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
             if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
@@ -1393,26 +1392,18 @@ class Ifherk
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
             }
-        }
 
-
-        //---------------
-        if (l==domain_->tree()->base_level())
-        for (auto it  = domain_->begin(l);
-                it != domain_->end(l); ++it)
-        {
-            if(!it->locally_owned()) continue;
-            if(!it->has_data() || !it->data().is_allocated()) continue;
-            //std::cout<<it->key()<<std::endl;
-
-            for(std::size_t i=0;i< it->num_neighbors();++i)
+            if (do_pass3)
             {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                for(std::size_t i=0;i< it->num_neighbors();++i)
                 {
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    auto it2=it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
                     {
-                        domain::Operator::smooth2zero<F>( it->data(), i);
+                        for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                        {
+                            domain::Operator::smooth2zero<F>( it->data(), i);
+                        }
                     }
                 }
             }

@@ -22,6 +22,7 @@
 #include <iblgf/types.hpp>
 #include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
 #include <cmath>
+#include <vector>
 
 namespace iblgf
 {
@@ -665,13 +666,40 @@ struct Operator
         //        return h1/(h1+h2);
         //    };
 
-        auto f = [](float_type x)
-        {
-            const float_type fac = 10.0;
-            const float_type shift = 0.2;
-            const float_type c = 1 - (0.5 + 0.5 * tanh(fac * (1 - shift)));
+        constexpr float_type fac = 10.0;
+        constexpr float_type shift = 0.2;
+        const float_type c = 1 - (0.5 + 0.5 * tanh(fac * (1 - shift)));
 
-            return ((0.5 + 0.5 * tanh(fac * (x - shift))) + c);
+        auto f = [fac, shift, c](float_type x)
+        {
+            return (0.5 + 0.5 * tanh(fac * (x - shift))) + c;
+        };
+
+        // f() is only ever called with x = i/(extent-1) for integer i in
+        // [0, extent-1], since x is always a node's local_pct() -- a
+        // function of its integer grid position within a fixed-size block.
+        // Precompute all `extent` possible results into a flat array once,
+        // then look them up by integer index -- a plain array read, not a
+        // hash-map-based cache (tried and reverted: hashing + pointer-
+        // chasing an unordered_map cost more than the tanh() call it
+        // replaced). Only used on the non-USE_OMP path below: the static
+        // table build isn't safe for concurrent first-use from multiple
+        // threads, and USE_OMP is not defined for this project's targets.
+        const std::size_t extent = static_cast<std::size_t>(block.bounding_box().extent()[0]);
+        static std::vector<float_type> f_table;
+        static std::size_t             f_table_extent = 0;
+        if (f_table_extent != extent)
+        {
+            f_table.resize(extent);
+            for (std::size_t i = 0; i < extent; ++i)
+                f_table[i] = f(static_cast<float_type>(i) / static_cast<float_type>(extent - 1));
+            f_table_extent = extent;
+        }
+        auto fc = [extent](float_type x) -> float_type
+        {
+            const std::size_t idx = static_cast<std::size_t>(
+                std::lround(x * static_cast<float_type>(extent - 1)));
+            return f_table[idx];
         };
 
         const std::size_t dim = 3;
@@ -743,34 +771,34 @@ struct Operator
 
                 if ((z == 0) && (dimension == 3))
                 {
-                    square = std::max(square, f(pct[2]));
+                    square = std::max(square, fc(pct[2]));
                     c += 1;
                 }
                 else if ((z == (dim - 1)) && (dimension == 3))
                 {
-                    square = std::max(square, f(1 - pct[2]));
+                    square = std::max(square, fc(1 - pct[2]));
                     c += 1;
                 }
 
                 if (y == 0)
                 {
-                    square = std::max(square, f(pct[1]));
+                    square = std::max(square, fc(pct[1]));
                     c += 1;
                 }
                 else if (y == (dim - 1))
                 {
-                    square = std::max(square, f(1 - pct[1]));
+                    square = std::max(square, fc(1 - pct[1]));
                     c += 1;
                 }
 
                 if (x == 0)
                 {
-                    square = std::max(square, f(pct[0]));
+                    square = std::max(square, fc(pct[0]));
                     c += 1;
                 }
                 else if (x == (dim - 1))
                 {
-                    square = std::max(square, f(1 - pct[0]));
+                    square = std::max(square, fc(1 - pct[0]));
                     c += 1;
                 }
 

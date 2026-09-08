@@ -352,17 +352,23 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		float_type maxNumVort = -1;
 
 
-		if (ref_filename_ != "null")
+		if (ref_filename_ != "null" && vortexType == 0)
 		{
-			if (vortexType == 0) {
 			simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
 			simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
-			}
+		}
+
+		if (vortexType != 0 || ref_filename_ != "null")
+		{
+			// error is only evaluated within this radius of the origin; outside
+			// it both u and u_ref are forced to zero so the far-field 1/r tail
+			// of the analytic vortex does not dominate the L_inf metric.
+			const float_type err_r = simulation_.dictionary_->template
+				get_or<float_type>("error_radius", 2.0 * R_);
 
 			auto center = (domain_->bounding_box().max() -
 				domain_->bounding_box().min() + 1) / 2.0 +
 				domain_->bounding_box().min();
-
 
 			for (auto it = domain_->begin_leaves();
 				it != domain_->end_leaves(); ++it)
@@ -375,56 +381,41 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				for (auto& node : it->data())
 				{
 					const auto& coord = node.level_coordinate();
-					float_type x = static_cast<float_type>
+					float_type xc = static_cast<float_type>
 						(coord[0] - center[0] * scaling) * dx_level;
-					float_type y = static_cast<float_type>
+					float_type yc = static_cast<float_type>
 						(coord[1] - center[1] * scaling) * dx_level;
-					//float_type z = static_cast<float_type>
-					//    (coord[2]-center[2]*scaling)*dx_level;
 
-					float_type r2 = x * x + y * y;
-					if (r2 > 4 * R_ * R_)
-					{
-						for (int field_idx = 0; field_idx < u_type::nFields(); field_idx++) {
-							node(u, field_idx) = 0.0;
-							node(u_ref, field_idx) = 0.0;
-						}
-					}
-					float_type r__ = std::sqrt(x * x + y * y);
+					float_type r2      = xc * xc + yc * yc;
+					float_type r__     = std::sqrt(r2);
 					float_type t_final = dt_ * tot_steps_;
-					node(w_exact) = w_taylor_vort(r__, t_final);
-					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
-						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
-					if (vortexType != 0) {
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling + 0.5) * dx_level;
-					node(u_ref, 0) = u_vort(x, y, t_final, 0);
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling + 0.5) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					node(u_ref, 1) = u_vort(x, y, t_final, 1);
 
-
-					//compute analytical u_theta
-					x = static_cast<float_type>(
-						coord[0] - center[0] * scaling) *
-						dx_level;
-					y = static_cast<float_type>(
-						coord[1] - center[1] * scaling) *
-						dx_level;
-					float_type u = u_vort(x, y, t_final, 0);
-					float_type v = u_vort(x, y, t_final, 1);
-					float_type u_theta = std::sqrt(u * u + v * v);
-					node(exact_u_theta, 0) = u_theta;
-					node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
+					if (r2 > err_r * err_r)
+					{
+						for (int f = 0; f < u_type::nFields(); ++f)     node(u, f)     = 0.0;
+						for (int f = 0; f < u_ref_type::nFields(); ++f) node(u_ref, f) = 0.0;
+					}
+					else if (vortexType != 0)
+					{
+						// exact solution at t_final: 2D Oseen in mode-0 real slots,
+						// exactly zero in every other Fourier / imaginary slot
+						for (int f = 0; f < u_ref_type::nFields(); ++f) node(u_ref, f) = 0.0;
+						node(u_ref, 0)         = u_vort(xc,                  yc + 0.5 * dx_level, t_final, 0);
+						node(u_ref, N_modes*2) = u_vort(xc + 0.5 * dx_level, yc,                  t_final, 1);
 					}
 
-					
+					// diagnostics only (written to final.hdf5, not in the returned metric)
+					node(w_exact) = w_oseen_vort(r__, t_final);
+					node(w_num) = (node(u, N_modes*2) - node.at_offset(u, -1, 0, N_modes*2) -
+						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
+					if (vortexType != 0)
+					{
+						float_type u = u_vort(xc, yc, t_final, 0);
+						float_type v = u_vort(xc, yc, t_final, 1);
+						node(exact_u_theta, 0) = std::sqrt(u * u + v * v);
+						node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
+					}
 				}
-
 			}
 		}
 		getUtheta<u_type, num_u_theta_type>();
@@ -460,7 +451,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		//        std::string("u3_"), 2);
 
 		simulation_.write("final.hdf5");
-		return u1_inf;
+		// max over: u_x accuracy, u_y accuracy, "u_z / higher modes stay ~0"
+		return std::max({u1_inf, u2_inf, u3_inf});
 
 #else
 		return 0.0;
@@ -866,14 +858,19 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				//(coord[2]-center[2]*scaling+0.5)*dx_level;
 
 				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
+
+				// zero every slot first: a 2D vortex lives entirely in Fourier
+				// mode 0 (real part); modes 1..N_modes-1 and all imag slots stay 0
+				for (int f = 0; f < u_type::nFields(); ++f) node(u, f) = 0.0;
+
 				node(edge_aux, 0) = vor(x, y, 0);
-				
+
 				x = static_cast<float_type>(coord[0]-center[0]*scaling)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling+0.5)*dx_level;
-				node(u, 0) = u_vort(x,y,0,0);
+				node(u, 0)          = u_vort(x,y,0,0);   // u_x, real, mode 0  (x-face)
 				x = static_cast<float_type>(coord[0]-center[0]*scaling+0.5)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling)*dx_level;
-				node(u, 1) = u_vort(x,y,0,1);
+				node(u, N_modes*2)  = u_vort(x,y,0,1);   // u_y, real, mode 0  (y-face)
 
             }
 
@@ -1173,7 +1170,11 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				float_type max_c = std::max(std::fabs(x), std::fabs(y));
 				//float_type max_c = std::fabs(x) + std::fabs(y);
 				float_type rd = std::sqrt(x * x + y * y);
-				float_type bd = 1.92 / pow(2, b.level()) - half_block;
+				// half-width (physical) of the geometric refinement box on the
+				// base level; "refine_box" config key (default 1.92, legacy)
+				float_type refine_box = simulation_.dictionary_->template
+					get_or<float_type>("refine_box", 1.92);
+				float_type bd = refine_box / pow(2, b.level()) - half_block;
 
 				//float_type bd = 4.8 - 1.2*b.level() - half_block;
 
@@ -1280,6 +1281,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		float_type expVal = std::exp(-eta * eta / 4.0);
 
 		float_type denom = std::sqrt(tc * nu);
+
+		if (eta < 1.0e-12) return 0.0;   // avoid 1/r blow-up at the vortex centre
 
 		float_type u_theta = 2.0 / denom / eta * (1.0 - expVal) / fac;
 		float_type theta = std::atan2(y, x);

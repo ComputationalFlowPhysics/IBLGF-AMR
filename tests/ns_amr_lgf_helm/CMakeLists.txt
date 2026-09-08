@@ -61,3 +61,31 @@ foreach (item ${Ptest_list})
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 13 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
     )
 endforeach()
+
+# ---------------------------------------------------------------------------
+# Lamb-Oseen analytic-verification test (CONVERGENCE_TEST is defined at the top
+# of its .cpp, so it is a separate binary from the plain ns_amr_lgf_Test_helm).
+# ---------------------------------------------------------------------------
+add_custom_target(copy_ifherk_files_helm_oseen ALL
+                      COMMAND ${CMAKE_COMMAND} -E copy_directory
+                      ${CMAKE_CURRENT_SOURCE_DIR}/configs_oseen
+                      ${CTEST_WORKING_DIRECTORY}/${NAME}_oseen
+                      )
+
+add_executable(ns_amr_lgf_Test_helm_oseen ns_amr_lgf_Test_helm_oseen.cpp ${SOURCES})
+add_dependencies(ns_amr_lgf_Test_helm_oseen copy_ifherk_files_helm_oseen)
+target_link_libraries(ns_amr_lgf_Test_helm_oseen
+                      iblgf_test_main
+                      ${MPI_LIBRARIES}
+                      ${Boost_LIBRARIES}
+                      ${FFTW_LIBRARIES}
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES}
+                      ${PETSC_LIBRARIES}
+                      xtensor
+                      slepc
+                      xsimd)
+add_test(
+    NAME ns_amr_lgf_Test_helm_oseen_parallel_np13
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 13 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:ns_amr_lgf_Test_helm_oseen> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}_oseen
+)

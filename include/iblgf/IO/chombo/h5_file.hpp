@@ -1225,13 +1225,16 @@ class hdf5_file
     void create_boxCompound(hid_type& _group_id, std::string _cName,
         hsize_type _boxes_size = 1, bool asAttr = true)
     {
-        index_list_t _min;
-        _min[0] = 0;
-        _min[1] = 0;
-        if constexpr (ND == 3)
-            _min[2] = 0;
+        // NB: index_list_t has `dimension` entries; writing _min[2] here when
+        // ND==3 but dimension==2 (helmholtz pseudo-3D output) overruns the array
+        // and corrupts the stack. The k-range is not written by the ND==3
+        // create overload, so a zero-filled index list plus explicit lo_k/hi_k
+        // is sufficient.
+        index_list_t _min{};
 
         box_compound _c(_min, _min);
+        _c.lo_k = 0;
+        _c.hi_k = 0;
         using tag = std::integral_constant<std::size_t, ND>*;
         create_boxCompound(_group_id, _cName, &_c, tag(0), _boxes_size, asAttr);
     }

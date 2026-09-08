@@ -29,7 +29,7 @@ double vortex_run(const std::string input, int argc, char** argv)
     NS_AMR_LGF setup(&dictionary);
 
     // run setup
-    double L_inf_error = setup.run();
+    float_type L_inf_error = setup.run(argc, argv);
 
     double EXP_LInf = dictionary.get_dictionary("simulation_parameters")
                           ->template get_or<double>("EXP_LInf", 0);
@@ -51,7 +51,7 @@ TEST(PoissonSolverTest, VortexRing_1)
                 std::cout << "------------- Testing on config file "
                           << s.filename() << " -------------" << std::endl;
 
-            double L_inf_error = vortex_run(s.string());
+            float_type L_inf_error = vortex_run(s.string());
             world.barrier();
 
             EXPECT_LT(L_inf_error, 0.0);

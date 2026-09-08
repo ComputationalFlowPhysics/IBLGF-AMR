@@ -45,7 +45,17 @@ target_link_libraries(ns_amr_lgf_helm.x
 foreach (item ${Ptest_list})
     add_executable(${item} ${item}.cpp ${SOURCES})
     add_dependencies(${item} copy_ifherk_files2D)
-    target_link_libraries(${item} iblgf_test_main)
+    target_link_libraries(${item}
+                          iblgf_test_main
+                          ${MPI_LIBRARIES}
+                          ${Boost_LIBRARIES}
+                          ${FFTW_LIBRARIES}
+                          ${HDF5_LIBRARIES} hdf5
+                          ${BLAS_LIBRARIES}
+                          ${PETSC_LIBRARIES}
+                          xtensor
+                          slepc
+                          xsimd)
     add_test(
         NAME ${item}_parallel_np13
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 13 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}

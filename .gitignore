@@ -29,7 +29,7 @@
 # Directories:
 .deps/
 builds/
-build/
+build/*
 doc/
 runs/
 # Executables
@@ -61,3 +61,7 @@ __pycache__/
 tests/poisson/vortexRings/
 runs_pybind/
 .iblgf_viewer/test-configs/
+build/tests/*
+!build/tests/
+!build/tests/CTestTestfile.cmake
+!build-gpu/tests/CTestTestfile.cmake

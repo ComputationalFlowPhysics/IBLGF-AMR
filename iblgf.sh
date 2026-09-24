@@ -97,15 +97,38 @@ Run a named test (staged run dir + logs + metadata):
 USAGE
 }
 
+mpi_launch() {
+  # mpi_launch <ranks> <exe> [args...]
+  # IBLGF_MPI_LAUNCHER (e.g. "srun" on Cray systems without mpirun) wins;
+  # otherwise fall back to mpiexec, then mpirun.
+  local np="$1"; shift
+  if [[ -n "${IBLGF_MPI_LAUNCHER:-}" ]]; then
+    # shellcheck disable=SC2086  # launcher may carry its own flags
+    $IBLGF_MPI_LAUNCHER -n "$np" "$@"
+  elif have mpiexec; then
+    mpiexec -np "$np" "$@"
+  elif have mpirun; then
+    mpirun -n "$np" "$@"
+  else
+    die "No MPI launcher found (set IBLGF_MPI_LAUNCHER, or put mpiexec/mpirun in PATH)."
+  fi
+}
+
 time_cmd() {
   # prints "real_seconds" to stdout
-  local out real
-  out="$(/usr/bin/time -p "$@" 2>&1 1>/dev/null)"
-  real="$(echo "$out" | awk '/^real /{print $2; exit}')"
+  # Uses the bash `time` keyword (not /usr/bin/time) so the command can be a
+  # shell function such as mpi_launch. The command's stdout is discarded and
+  # its stderr passes through; only the timing report is captured.
+  local real rc=0 TIMEFORMAT='%R'
+  { real="$( { time "$@" 1>/dev/null 2>&3; } 2>&1 )" || rc=$?; } 3>&2
+  [[ "$rc" -eq 0 ]] || {
+    echo "Error: timed command failed (exit $rc): $*" >&2
+    exit "$rc"
+  }
 
-  [[ -n "$real" ]] || {
+  [[ "$real" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
     echo "Error: failed to parse timing output. Raw output:" >&2
-    echo "$out" >&2
+    echo "$real" >&2
     exit 2
   }
 
@@ -337,8 +360,8 @@ do_run() {
 
   echo "==> Running $exe_path with $config (-n $mpi)"
 
-  if [[ "$mpi" -gt 1 ]] && have mpirun; then
-    mpirun -n "$mpi" "$exe_path" "$config"
+  if [[ "$mpi" -gt 1 ]] && { [[ -n "${IBLGF_MPI_LAUNCHER:-}" ]] || have mpirun; }; then
+    mpi_launch "$mpi" "$exe_path" "$config"
   else
     "$exe_path" "$config"
   fi
@@ -480,13 +503,7 @@ do_run_test() {
 
       real_s=""
       if [[ "$mpi" -gt 1 ]]; then
-        if have mpiexec; then
-          real_s="$(time_cmd mpiexec -np "$mpi" "$exe" "./$cfg_name")"
-        elif have mpirun; then
-          real_s="$(time_cmd mpirun -n "$mpi" "$exe" "./$cfg_name")"
-        else
-          die "Neither mpiexec nor mpirun found in PATH."
-        fi
+        real_s="$(time_cmd mpi_launch "$mpi" "$exe" "./$cfg_name")"
       else
         real_s="$(time_cmd "$exe" "./$cfg_name")"
       fi
@@ -504,13 +521,7 @@ do_run_test() {
     cd "$run_dir"
 
     if [[ "$mpi" -gt 1 ]]; then
-      if have mpiexec; then
-        mpiexec -np "$mpi" "$exe" "./$cfg_name" > stdout.log 2> stderr.log
-      elif have mpirun; then
-        mpirun -n "$mpi" "$exe" "./$cfg_name" > stdout.log 2> stderr.log
-      else
-        die "Neither mpiexec nor mpirun found in PATH."
-      fi
+      mpi_launch "$mpi" "$exe" "./$cfg_name" > stdout.log 2> stderr.log
     else
       "$exe" "./$cfg_name" > stdout.log 2> stderr.log
     fi

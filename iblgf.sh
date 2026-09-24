@@ -33,7 +33,6 @@ cpu_count() {
   fi
 }
 
-# *added*
 default_build_jobs() {
   # Env override wins, otherwise use cpu_count()
   echo "${IBLGF_BUILD_JOBS:-$(cpu_count)}"
@@ -56,7 +55,27 @@ need_nvcc_if_gpu() {
     fi
   fi
 }
-# *end of added*
+
+mpi_include_flags() {
+  local output includes token
+
+  output=""
+  if have mpicxx; then
+    output="$(mpicxx -show 2>/dev/null || true)"
+  fi
+  if [[ -z "$output" ]] && have mpicc; then
+    output="$(mpicc -show 2>/dev/null || true)"
+  fi
+
+  includes=""
+  for token in $output; do
+    if [[ "$token" == -I* ]]; then
+      includes+="${includes:+ }$token"
+    fi
+  done
+
+  echo "$includes"
+}
 
 script_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
@@ -233,7 +252,6 @@ find_test_config() {
   return 1
 }
 
-# *added*
 latest_run_dir() {
   local test_name="$1"
   local base
@@ -243,7 +261,6 @@ latest_run_dir() {
   # Pick newest directory by modification time
   ls -1dt "$base"/*/ 2>/dev/null | head -n 1
 }
-# *end of added*
 
 do_configure() {
   while [[ $# -gt 0 ]]; do
@@ -265,6 +282,11 @@ do_configure() {
   local cmake_args=()
   if [[ "$USE_GPU" -eq 1 ]]; then
     cmake_args+=(-DUSE_GPU=True)
+    local mpi_includes
+    mpi_includes="$(mpi_include_flags)"
+    if [[ -n "$mpi_includes" ]]; then
+      cmake_args+=("-DCMAKE_CUDA_FLAGS:STRING=${mpi_includes}")
+    fi
   fi
   
   # Allow overriding MPI ranks for tests via environment variable

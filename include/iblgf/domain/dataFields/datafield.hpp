@@ -34,6 +34,7 @@
 
 #ifdef IBLGF_COMPILE_CUDA
 #include <cuda_runtime.h>
+#include <iblgf/utilities/cuda_check.hpp>
 #endif
 
 namespace iblgf
@@ -484,7 +485,7 @@ class DataField : public BlockDescriptor<int, Dim>
         clear_device();
         if (needed > 0)
         {
-            cudaMalloc(&device_data_, needed * sizeof(data_type));
+            IBLGF_CUDA_CHECK(cudaMalloc(&device_data_, needed * sizeof(data_type)));
             device_size_ = needed;
         }
         device_valid_ = false;

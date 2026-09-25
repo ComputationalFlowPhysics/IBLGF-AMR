@@ -86,6 +86,16 @@ def positive_integer(value):
     return number
 
 
+def nonnegative_integer(value):
+    try:
+        number = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("worker index must be an integer") from error
+    if number < 0:
+        raise argparse.ArgumentTypeError("worker index must be nonnegative")
+    return number
+
+
 def threshold_fraction(value):
     try:
         fraction = float(value)
@@ -186,6 +196,34 @@ def parse_args():
             "them again"
         ),
     )
+    parallel_mode = parser.add_mutually_exclusive_group()
+    parallel_mode.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parallel_mode.add_argument(
+        "--worker-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parallel_mode.add_argument(
+        "--assemble-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--worker-index",
+        type=nonnegative_integer,
+        default=0,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--worker-count",
+        type=positive_integer,
+        default=1,
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
     if args.view_only and args.data_only:
         parser.error("--view-only and --data-only cannot be used together")
@@ -193,6 +231,11 @@ def parse_args():
         parser.error(
             "--render-from-csv cannot be combined with --view-only or --data-only"
         )
+    parallel_requested = args.prepare_only or args.worker_only or args.assemble_only
+    if parallel_requested and not args.data_only:
+        parser.error("parallel circulation workers require --data-only")
+    if args.worker_index >= args.worker_count:
+        parser.error("--worker-index must be less than --worker-count")
     return args
 
 
@@ -486,6 +529,122 @@ def load_resume_rows(
             reusable_rows[step] = row
 
     return reusable_rows
+
+
+def worker_csv_folder(output_folder):
+    return output_folder / "worker_csv"
+
+
+def worker_csv_path(output_folder, worker_index):
+    return worker_csv_folder(output_folder) / f"worker_{worker_index:04d}.csv"
+
+
+def worker_resume_path(output_folder):
+    return worker_csv_folder(output_folder) / "resume_seed.csv"
+
+
+def assigned_snapshots(snapshots, worker_index, worker_count):
+    if worker_index >= worker_count:
+        raise ValueError(
+            f"worker index {worker_index} must be less than worker count "
+            f"{worker_count}"
+        )
+    return list(enumerate(snapshots))[worker_index::worker_count]
+
+
+def merge_resume_rows(csv_paths, snapshots, frames_folder, metadata, thresholds):
+    cfl, dx_base, levels = metadata
+    vorticity_threshold_fraction, center_threshold_fraction = thresholds
+    merged = {}
+    for csv_path in csv_paths:
+        rows = load_resume_rows(
+            csv_path,
+            snapshots,
+            frames_folder,
+            cfl,
+            dx_base,
+            levels,
+            vorticity_threshold_fraction,
+            center_threshold_fraction,
+            require_frame=False,
+        )
+        for step, row in rows.items():
+            existing = merged.get(step)
+            if existing is not None and any(
+                existing.get(name, "") != row.get(name, "")
+                for name in CSV_FIELDNAMES
+            ):
+                raise ValueError(
+                    f"Conflicting parallel results for snapshot step {step}"
+                )
+            merged[step] = row
+    return merged
+
+
+def prepare_parallel_data(
+    output_folder,
+    frames_folder,
+    csv_path,
+    snapshots,
+    metadata,
+    thresholds,
+    resume,
+):
+    output_folder.mkdir(parents=True, exist_ok=True)
+    shards_folder = worker_csv_folder(output_folder)
+    shards_folder.mkdir(parents=True, exist_ok=True)
+
+    reusable_rows = {}
+    if resume:
+        existing_paths = [csv_path, *sorted(shards_folder.glob("worker_*.csv"))]
+        reusable_rows = merge_resume_rows(
+            existing_paths,
+            snapshots,
+            frames_folder,
+            metadata,
+            thresholds,
+        )
+
+    write_csv_rows(
+        worker_resume_path(output_folder),
+        [
+            reusable_rows[snapshot_step(snapshot)]
+            for snapshot in snapshots
+            if snapshot_step(snapshot) in reusable_rows
+        ],
+    )
+    for old_shard in shards_folder.glob("worker_*.csv"):
+        old_shard.unlink()
+    if not resume:
+        write_csv_rows(csv_path, [])
+    print(
+        f"Prepared parallel analysis with {len(reusable_rows)} reusable rows: "
+        f"{output_folder}",
+        flush=True,
+    )
+
+
+def read_worker_rows(
+    output_folder,
+    worker_count,
+    snapshots,
+    frames_folder,
+    metadata,
+    thresholds,
+):
+    csv_paths = []
+    for worker_index in range(worker_count):
+        path = worker_csv_path(output_folder, worker_index)
+        if not path.is_file():
+            raise RuntimeError(f"Missing circulation-worker CSV: {path}")
+        csv_paths.append(path)
+    return merge_resume_rows(
+        csv_paths,
+        snapshots,
+        frames_folder,
+        metadata,
+        thresholds,
+    )
 
 
 def load_paraview():
@@ -923,6 +1082,44 @@ def calculate_and_render(
     )
 
 
+def circulation_row(
+    frame_index,
+    snapshot,
+    time,
+    values,
+    vorticity_threshold_fraction,
+    center_threshold_fraction,
+    png_file="",
+):
+    (
+        circulation,
+        peak_vorticity,
+        threshold_cells,
+        leading_cells,
+        center_x,
+        center_y,
+        center_threshold_cells,
+        center_region_cells,
+    ) = values
+    return {
+        "frame_index": frame_index,
+        "snapshot_step": snapshot_step(snapshot),
+        "time": f"{time:.15g}",
+        "circulation": f"{circulation:.16g}",
+        "peak_vorticity": f"{peak_vorticity:.16g}",
+        "vorticity_threshold_fraction": f"{vorticity_threshold_fraction:.16g}",
+        "threshold_cells": threshold_cells,
+        "leading_region_cells": leading_cells,
+        "center_threshold_fraction": f"{center_threshold_fraction:.16g}",
+        "center_threshold_cells": center_threshold_cells,
+        "center_region_cells": center_region_cells,
+        "center_x": f"{center_x:.16g}",
+        "center_y": f"{center_y:.16g}",
+        "snapshot_file": str(snapshot.resolve()),
+        "png_file": str(png_file),
+    }
+
+
 def write_time_series_plot(
     simple,
     csv_path,
@@ -961,6 +1158,42 @@ def write_time_series_plot(
     )
     if not png_path.is_file() or png_path.stat().st_size == 0:
         raise RuntimeError(f"ParaView did not create a valid plot: {png_path}")
+
+
+def write_analysis_plots(
+    simple,
+    csv_path,
+    circulation_plot_path,
+    center_x_plot_path,
+    center_y_plot_path,
+):
+    write_time_series_plot(
+        simple,
+        csv_path,
+        circulation_plot_path,
+        "circulation",
+        "Circulation of the leading vortex",
+        "Circulation",
+        "Leading vortex circulation",
+    )
+    write_time_series_plot(
+        simple,
+        csv_path,
+        center_x_plot_path,
+        "center_x",
+        "Axial center of the leading vortex",
+        "Center x-coordinate",
+        "Lamb center x",
+    )
+    write_time_series_plot(
+        simple,
+        csv_path,
+        center_y_plot_path,
+        "center_y",
+        "Radial center of the leading vortex",
+        "Center y-coordinate",
+        "Lamb center y",
+    )
 
 
 def find_ffmpeg_command():
@@ -1034,6 +1267,169 @@ def build_gif(frames_folder, snapshots, gif_path):
         raise RuntimeError(f"ffmpeg did not create a valid GIF: {gif_path}")
 
 
+def analyze_assigned_snapshots(
+    args,
+    snapshots,
+    output_folder,
+    frames_folder,
+    metadata,
+):
+    cfl, dx_base, levels = metadata
+    assignments = assigned_snapshots(
+        snapshots,
+        args.worker_index,
+        args.worker_count,
+    )
+    seed_path = worker_resume_path(output_folder)
+    reusable_rows = merge_resume_rows(
+        [seed_path],
+        snapshots,
+        frames_folder,
+        metadata,
+        (
+            args.vorticity_threshold_fraction,
+            args.center_threshold_fraction,
+        ),
+    )
+    rows = {
+        snapshot_step(snapshot): reusable_rows[snapshot_step(snapshot)]
+        for _, snapshot in assignments
+        if snapshot_step(snapshot) in reusable_rows
+    }
+    shard_path = worker_csv_path(output_folder, args.worker_index)
+    write_csv_rows(
+        shard_path,
+        [
+            rows[snapshot_step(snapshot)]
+            for _, snapshot in assignments
+            if snapshot_step(snapshot) in rows
+        ],
+    )
+
+    pending = [
+        (frame_index, snapshot)
+        for frame_index, snapshot in assignments
+        if snapshot_step(snapshot) not in rows
+    ]
+    simple = None
+    servermanager = None
+    if pending:
+        simple, servermanager = load_paraview()
+
+    print(
+        f"Circulation worker {args.worker_index + 1}/{args.worker_count}: "
+        f"{len(assignments)} snapshots, {len(pending)} pending",
+        flush=True,
+    )
+    with shard_path.open("a", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDNAMES)
+        for assignment_index, (frame_index, snapshot) in enumerate(assignments):
+            step = snapshot_step(snapshot)
+            if step in rows:
+                print(
+                    f"[worker {args.worker_index + 1}, "
+                    f"{assignment_index + 1}/{len(assignments)}] "
+                    f"Reusing {snapshot.name}",
+                    flush=True,
+                )
+                continue
+
+            print(
+                f"[worker {args.worker_index + 1}, "
+                f"{assignment_index + 1}/{len(assignments)}] "
+                f"Analyzing {snapshot.name}",
+                flush=True,
+            )
+            time = physical_time(step, cfl, dx_base, levels)
+            values = calculate_and_render(
+                simple,
+                servermanager,
+                snapshot.resolve(),
+                frames_folder / f"flowTime_{step}.png",
+                camera_bounds=None,
+                vorticity_threshold_fraction=(
+                    args.vorticity_threshold_fraction
+                ),
+                center_threshold_fraction=args.center_threshold_fraction,
+                analyze=True,
+                render=False,
+            )
+            row = circulation_row(
+                frame_index,
+                snapshot,
+                time,
+                values,
+                args.vorticity_threshold_fraction,
+                args.center_threshold_fraction,
+            )
+            writer.writerow(row)
+            csv_file.flush()
+            rows[step] = row
+            print(
+                f"    time={time:.8g}, circulation={values[0]:.8g}, "
+                f"center=({values[4]:.8g}, {values[5]:.8g})",
+                flush=True,
+            )
+
+    write_csv_rows(
+        shard_path,
+        [rows[snapshot_step(snapshot)] for _, snapshot in assignments],
+    )
+    if simple is not None:
+        simple.ResetSession()
+    print(f"Circulation worker CSV: {shard_path}", flush=True)
+
+
+def assemble_parallel_data(
+    args,
+    snapshots,
+    output_folder,
+    frames_folder,
+    csv_path,
+    circulation_plot_path,
+    center_x_plot_path,
+    center_y_plot_path,
+    metadata,
+):
+    rows_by_step = read_worker_rows(
+        output_folder,
+        args.worker_count,
+        snapshots,
+        frames_folder,
+        metadata,
+        (
+            args.vorticity_threshold_fraction,
+            args.center_threshold_fraction,
+        ),
+    )
+    missing_steps = [
+        snapshot_step(snapshot)
+        for snapshot in snapshots
+        if snapshot_step(snapshot) not in rows_by_step
+    ]
+    if missing_steps:
+        raise RuntimeError(
+            "Parallel circulation analysis is missing snapshot steps: "
+            + ", ".join(str(step) for step in missing_steps)
+        )
+
+    rows = [rows_by_step[snapshot_step(snapshot)] for snapshot in snapshots]
+    write_csv_rows(csv_path, rows)
+    simple, _ = load_paraview()
+    write_analysis_plots(
+        simple,
+        csv_path,
+        circulation_plot_path,
+        center_x_plot_path,
+        center_y_plot_path,
+    )
+    simple.ResetSession()
+    print(f"Parallel circulation analysis assembled: {csv_path}", flush=True)
+    print(f"Circulation plot: {circulation_plot_path}", flush=True)
+    print(f"Center x plot:    {center_x_plot_path}", flush=True)
+    print(f"Center y plot:    {center_y_plot_path}", flush=True)
+
+
 def main():
     args = parse_args()
 
@@ -1052,6 +1448,44 @@ def main():
             center_y_plot_path,
         ) = output_paths(snapshot_folder, args.view_only, args.output_dir)
         output_folder.mkdir(parents=True, exist_ok=True)
+        metadata = (cfl, dx_base, levels)
+        if args.prepare_only:
+            prepare_parallel_data(
+                output_folder,
+                frames_folder,
+                csv_path,
+                snapshots,
+                metadata,
+                (
+                    args.vorticity_threshold_fraction,
+                    args.center_threshold_fraction,
+                ),
+                args.resume,
+            )
+            return 0
+        if args.worker_only:
+            analyze_assigned_snapshots(
+                args,
+                snapshots,
+                output_folder,
+                frames_folder,
+                metadata,
+            )
+            return 0
+        if args.assemble_only:
+            assemble_parallel_data(
+                args,
+                snapshots,
+                output_folder,
+                frames_folder,
+                csv_path,
+                circulation_plot_path,
+                center_x_plot_path,
+                center_y_plot_path,
+                metadata,
+            )
+            return 0
+
         if not args.data_only:
             prepare_frames_folder(
                 frames_folder,
@@ -1167,16 +1601,7 @@ def main():
                     f"Analyzing {snapshot.name}",
                     flush=True,
                 )
-                (
-                    circulation,
-                    peak_vorticity,
-                    threshold_cells,
-                    leading_cells,
-                    center_x,
-                    center_y,
-                    center_threshold_cells,
-                    center_region_cells,
-                ) = calculate_and_render(
+                values = calculate_and_render(
                     simple,
                     servermanager,
                     snapshot.resolve(),
@@ -1191,36 +1616,22 @@ def main():
                     saved_row=saved_row if args.render_from_csv else None,
                 )
                 if writer is not None and saved_row is None:
-                    row = {
-                        "frame_index": frame_index,
-                        "snapshot_step": step,
-                        "time": f"{time:.15g}",
-                        "circulation": f"{circulation:.16g}",
-                        "peak_vorticity": f"{peak_vorticity:.16g}",
-                        "vorticity_threshold_fraction": (
-                            f"{args.vorticity_threshold_fraction:.16g}"
-                        ),
-                        "threshold_cells": threshold_cells,
-                        "leading_region_cells": leading_cells,
-                        "center_threshold_fraction": (
-                            f"{args.center_threshold_fraction:.16g}"
-                        ),
-                        "center_threshold_cells": center_threshold_cells,
-                        "center_region_cells": center_region_cells,
-                        "center_x": f"{center_x:.16g}",
-                        "center_y": f"{center_y:.16g}",
-                        "snapshot_file": str(snapshot.resolve()),
-                        "png_file": (
-                            "" if args.data_only else str(frame_path.resolve())
-                        ),
-                    }
+                    row = circulation_row(
+                        frame_index,
+                        snapshot,
+                        time,
+                        values,
+                        args.vorticity_threshold_fraction,
+                        args.center_threshold_fraction,
+                        png_file=("" if args.data_only else frame_path.resolve()),
+                    )
                     writer.writerow(row)
                     reusable_rows[step] = row
                     csv_file.flush()
                     print(
                         f"    time={time:.8g}, "
-                        f"circulation={circulation:.8g}, "
-                        f"center=({center_x:.8g}, {center_y:.8g})",
+                        f"circulation={values[0]:.8g}, "
+                        f"center=({values[4]:.8g}, {values[5]:.8g})",
                         flush=True,
                     )
                 else:
@@ -1236,32 +1647,12 @@ def main():
             )
 
         if not args.view_only:
-            write_time_series_plot(
+            write_analysis_plots(
                 simple,
                 csv_path,
                 circulation_plot_path,
-                "circulation",
-                "Circulation of the leading vortex",
-                "Circulation",
-                "Leading vortex circulation",
-            )
-            write_time_series_plot(
-                simple,
-                csv_path,
                 center_x_plot_path,
-                "center_x",
-                "Axial center of the leading vortex",
-                "Center x-coordinate",
-                "Lamb center x",
-            )
-            write_time_series_plot(
-                simple,
-                csv_path,
                 center_y_plot_path,
-                "center_y",
-                "Radial center of the leading vortex",
-                "Center y-coordinate",
-                "Lamb center y",
             )
         if not args.data_only:
             build_gif(frames_folder, snapshots, gif_path)

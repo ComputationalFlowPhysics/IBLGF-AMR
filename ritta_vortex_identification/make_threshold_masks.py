@@ -711,12 +711,18 @@ def save_extrema_track_plot(
     axis.set_title(title)
     axis.grid(True, alpha=0.3)
     if tracks:
-        legend_columns = max(1, math.ceil(len(tracks) / 20))
+        legend_columns = max(1, math.ceil(len(tracks) / 10))
         axis.legend(
             loc="upper left",
             bbox_to_anchor=(1.02, 1.0),
             ncol=legend_columns,
-            fontsize=7,
+            fontsize=6,
+            markerscale=0.75,
+            handlelength=1.4,
+            handletextpad=0.4,
+            labelspacing=0.25,
+            borderpad=0.35,
+            columnspacing=0.8,
         )
     else:
         axis.text(

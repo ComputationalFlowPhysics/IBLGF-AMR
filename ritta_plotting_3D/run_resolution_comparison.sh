@@ -9,19 +9,20 @@ comparison_script="${script_dir}/plot_resolution_comparison.py"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") SWEEP_FOLDER [STRIDE] [CENTER_THRESHOLD_FRACTION] [LEGEND_BY] [VORTICITY_THRESHOLD_FRACTION] [CASE_WORKERS]
+  $(basename "$0") SWEEP_FOLDER [STRIDE] [CENTER_THRESHOLD_FRACTION] [LEGEND_BY] [VORTICITY_THRESHOLD_FRACTION] [FRAME_WORKERS]
 
 Examples:
   $(basename "$0") runs/ns_amr_lgf/res_sweep 1 0.4
-  $(basename "$0") runs/ns_amr_lgf/formation 1 0.4 tau 0.02 6
+  $(basename "$0") runs/ns_amr_lgf/formation 1 0.4 tau 0.02 64
 
 Existing leading_vortex_circulation.csv files are reused. ParaView analysis is
 run only for cases whose CSV is missing. LEGEND_BY is resolution (default) or
 tau. VORTICITY_THRESHOLD_FRACTION defaults to the paper's 0.02 cutoff;
 CENTER_THRESHOLD_FRACTION independently controls the Lamb-center calculation.
-CASE_WORKERS defaults to PARAVIEW_CASE_WORKERS or 1 and runs independent cases
-concurrently. Analysis-only mode skips slice frames and GIFs, and
-campaign-qualified output folders avoid name collisions.
+Tau cases run sequentially. FRAME_WORKERS shards each case's snapshots across
+independent ParaView processes and defaults to PARAVIEW_FRAME_WORKERS, the
+available Slurm tasks or CPUs per task, or 1. Analysis-only mode skips slice
+frames and GIFs, and campaign-qualified output folders avoid name collisions.
 EOF
 }
 
@@ -39,7 +40,17 @@ stride="${2:-1}"
 center_threshold_fraction="${3:-0.4}"
 legend_by="${4:-resolution}"
 vorticity_threshold_fraction="${5:-0.02}"
-case_workers="${6:-${PARAVIEW_CASE_WORKERS:-1}}"
+default_frame_workers="${PARAVIEW_FRAME_WORKERS:-}"
+if [[ -z "$default_frame_workers" ]]; then
+  if [[ "${SLURM_NTASKS:-1}" =~ ^[1-9][0-9]*$ ]] && [[ "${SLURM_NTASKS:-1}" -gt 1 ]]; then
+    default_frame_workers="$SLURM_NTASKS"
+  elif [[ "${SLURM_CPUS_PER_TASK:-1}" =~ ^[1-9][0-9]*$ ]] && [[ "${SLURM_CPUS_PER_TASK:-1}" -gt 1 ]]; then
+    default_frame_workers="$SLURM_CPUS_PER_TASK"
+  else
+    default_frame_workers=1
+  fi
+fi
+frame_workers="${6:-$default_frame_workers}"
 
 if [[ ! "$stride" =~ ^[1-9][0-9]*$ ]]; then
   echo "Error: stride must be a positive integer." >&2
@@ -49,42 +60,36 @@ if [[ "$legend_by" != "resolution" && "$legend_by" != "tau" ]]; then
   echo "Error: LEGEND_BY must be resolution or tau." >&2
   exit 1
 fi
-if [[ ! "$case_workers" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Error: CASE_WORKERS must be a positive integer." >&2
+if [[ ! "$frame_workers" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Error: FRAME_WORKERS must be a positive integer." >&2
   exit 1
 fi
 
 sweep_name="$(basename "$sweep_folder")"
-analysis_pids=()
-analysis_names=()
-analysis_logs=()
-
-wait_for_batch() {
-  local index
-  local failed=0
-  for index in "${!analysis_pids[@]}"; do
-    if wait "${analysis_pids[$index]}"; then
-      echo "[${analysis_names[$index]}] Analysis completed."
-    else
-      echo "[${analysis_names[$index]}] Analysis failed." >&2
-      echo "Log: ${analysis_logs[$index]}" >&2
-      tail -n 40 "${analysis_logs[$index]}" >&2 || true
-      failed=1
-    fi
-  done
-  analysis_pids=()
-  analysis_names=()
-  analysis_logs=()
-  return "$failed"
-}
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VTK_SMP_MAX_THREADS=1
 
 shopt -s nullglob
-run_count=0
+run_folders=()
 for run_folder in "$sweep_folder"/*; do
   [[ -d "$run_folder/output" ]] || continue
   snapshots=("$run_folder"/output/flowTime_*.hdf5)
   [[ ${#snapshots[@]} -gt 0 ]] || continue
-  run_count=$((run_count + 1))
+  run_folders+=("$run_folder")
+done
+
+if [[ ${#run_folders[@]} -eq 0 ]]; then
+  echo "Error: no child runs with output/flowTime_*.hdf5 were found in $sweep_folder" >&2
+  exit 1
+fi
+
+mapfile -t run_folders < <(printf '%s\n' "${run_folders[@]}" | sort -V)
+echo "Tau cases:     ${#run_folders[@]} (processed sequentially)"
+echo "Frame workers: $frame_workers per case"
+
+for run_folder in "${run_folders[@]}"; do
 
   run_name="$(basename "$run_folder")"
   case_output="${script_dir}/outputs/${sweep_name}_${run_name}_circulation"
@@ -160,33 +165,30 @@ raise SystemExit(0 if matches else 1)
 
   mkdir -p "$case_output"
   analysis_log="$case_output/analysis.log"
-  echo "[$run_name] Starting ParaView analysis; log: $analysis_log"
-  "$analysis_script" \
+  resume_args=()
+  if compgen -G "$case_output/worker_csv/worker_*.csv" >/dev/null; then
+    resume_args=(--resume)
+  fi
+  echo "[$run_name] Starting ParaView analysis with $frame_workers frame workers; log: $analysis_log"
+  if "$analysis_script" \
     "$run_folder" \
     "$stride" \
     --data-only \
+    --workers "$frame_workers" \
     --output-dir "$case_output" \
     --vorticity-threshold-fraction "$vorticity_threshold_fraction" \
     --center-threshold-fraction "$center_threshold_fraction" \
     "${config_args[@]}" \
-    >"$analysis_log" 2>&1 &
-  analysis_pids+=("$!")
-  analysis_names+=("$run_name")
-  analysis_logs+=("$analysis_log")
-
-  if [[ ${#analysis_pids[@]} -ge $case_workers ]]; then
-    wait_for_batch
+    "${resume_args[@]}" \
+    >"$analysis_log" 2>&1; then
+    echo "[$run_name] Analysis completed."
+  else
+    echo "[$run_name] Analysis failed." >&2
+    echo "Log: $analysis_log" >&2
+    tail -n 50 "$analysis_log" >&2 || true
+    exit 1
   fi
 done
-
-if [[ $run_count -eq 0 ]]; then
-  echo "Error: no child runs with output/flowTime_*.hdf5 were found in $sweep_folder" >&2
-  exit 1
-fi
-
-if [[ ${#analysis_pids[@]} -gt 0 ]]; then
-  wait_for_batch
-fi
 
 if ! python -c 'import matplotlib' 2>/dev/null; then
   # The same environment used by the standalone analysis already provides Matplotlib.

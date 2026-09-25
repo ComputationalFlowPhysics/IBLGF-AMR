@@ -38,8 +38,17 @@ For CSV data and time-history plots without the slice frames or GIF, use
 
 ```bash
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER 1 --data-only
+./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER 1 \
+    --data-only --workers 64
 ```
+
+With `--data-only`, `--workers` distributes disjoint snapshot subsets across
+independent serial ParaView processes. Each worker flushes a private CSV shard;
+after they finish, the wrapper validates and merges every selected snapshot in
+numeric order before writing the time-history plots. Inside a Slurm allocation,
+workers run as exclusive one-core job steps. If `--workers` is omitted, the
+wrapper uses `PARAVIEW_FRAME_WORKERS`, available Slurm tasks or CPUs per task,
+and otherwise one worker.
 
 The leading-vortex circulation cutoff defaults to the paper's 2% of maximum
 absolute vorticity. Set it explicitly with `--vorticity-threshold-fraction`.
@@ -138,17 +147,19 @@ For a formation-time sweep, label and numerically order the curves by `b_f_tau`:
 ```bash
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 ./ritta_plotting_3D/run_resolution_comparison.sh \
-    runs/ns_amr_lgf/formation 1 0.4 tau 0.02 6
+    runs/ns_amr_lgf/formation 1 0.4 tau 0.02 64
 ```
 
-The final argument is the number of independent cases to analyze concurrently.
-This task-level parallelism preserves the serial connectivity calculation for
-each snapshot; distributing one clipped slice over many ParaView MPI ranks can
-leave empty partitions and make `vtkPConnectivityFilter` fail. The comparison
-wrapper also uses data-only analysis and writes each case under a
-campaign-qualified folder such as `outputs/formation_tau_5p0_circulation/`,
-preventing identically named cases from different campaigns from overwriting
-one another.
+The final argument is the number of independent snapshot workers used for each
+case. Tau cases run sequentially in numeric order. Within a case, every worker
+uses a serial ParaView process on a disjoint subset of snapshots, then the
+worker CSVs are validated and merged in numeric snapshot order. This uses the
+allocation without distributing one clipped slice over many MPI ranks, which
+can leave empty partitions and make `vtkPConnectivityFilter` fail. If the final
+argument is omitted, the wrapper uses `PARAVIEW_FRAME_WORKERS`, then available
+Slurm tasks or CPUs per task, and otherwise one worker. Campaign-qualified
+output folders such as `outputs/formation_tau_5p0_circulation/` prevent
+identically named cases from different campaigns from overwriting one another.
 
 Formation-time comparisons also save
 `combined_circulation_vs_time_over_tau.png`, which plots the same circulation

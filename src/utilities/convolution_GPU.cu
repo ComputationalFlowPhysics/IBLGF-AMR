@@ -10,6 +10,7 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
+#include <algorithm>
 #include <iblgf/utilities/convolution_GPU.hpp>
 
 namespace iblgf
@@ -80,6 +81,27 @@ sum_batches(const cuDoubleComplex* input, cuDoubleComplex* output, int batch_siz
         }
         // On first flush, write directly; otherwise accumulate.
         // This lets callers skip zeroing the output buffer before the first batch.
+        output[i] = first_flush ? sum : cuCadd(output[i], sum);
+    }
+}
+
+__global__ void
+prod_complex_sum_pairs(const cuDoubleComplex* const* lgf_ptrs, const size_t* lgf_sizes,
+                       const cuDoubleComplex* const* src_ptrs, int n_pairs,
+                       cuDoubleComplex* output, size_t size, bool first_flush)
+{
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t stride = blockDim.x * gridDim.x;
+
+    for (size_t i = idx; i < size; i += stride)
+    {
+        cuDoubleComplex sum = make_cuDoubleComplex(0.0, 0.0);
+        for (int p = 0; p < n_pairs; ++p)
+        {
+            // Elements beyond an LGF spectrum's size count as zero
+            if (i < lgf_sizes[p])
+                sum = cuCadd(sum, cuCmul(__ldg(&lgf_ptrs[p][i]), __ldg(&src_ptrs[p][i])));
+        }
         output[i] = first_flush ? sum : cuCadd(output[i], sum);
     }
 }
@@ -400,6 +422,24 @@ dfft_r2c_gpu_batch::dfft_r2c_gpu_batch(dims_3D _dims_padded, dims_3D _dims_non_z
     // Bind cuFFT plan to main compute stream after plan creation
     IBLGF_CUFFT_CHECK(cufftSetStream(plan, stream_));
 
+    // Power-of-two batch plans for execute_into, sharing one work area
+    size_t work_max = 0;
+    for (int b = 1; b <= max_batch_size_; b *= 2)
+    {
+        cufftHandle p;
+        size_t      work = 0;
+        IBLGF_CUFFT_CHECK(cufftCreate(&p));
+        IBLGF_CUFFT_CHECK(cufftSetAutoAllocation(p, 0));
+        IBLGF_CUFFT_CHECK(cufftMakePlanMany(p, 3, n, NULL, 1, NZ * NY * NX, NULL, 1, NX_out * NY * NZ,
+            CUFFT_D2Z, b, &work));
+        IBLGF_CUFFT_CHECK(cufftSetStream(p, stream_));
+        sub_sizes_.push_back(b);
+        sub_plans_.push_back(p);
+        work_max = std::max(work_max, work);
+    }
+    IBLGF_CUDA_CHECK(cudaMalloc(&sub_work_, work_max > 0 ? work_max : 1));
+    for (auto p : sub_plans_) IBLGF_CUFFT_CHECK(cufftSetWorkArea(p, sub_work_));
+
     // Event used to order compute stream after transfer stream without host blocking
     IBLGF_CUDA_CHECK(cudaEventCreateWithFlags(&transfer_ready_event_, cudaEventDisableTiming));
     // Event used to signal compute completion for safe buffer reuse
@@ -484,6 +524,36 @@ dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
         cufftResult res = cufftDestroy(plan);
         if (res != CUFFT_SUCCESS) std::cerr << "cufftDestroy(plan) failed: " << res << "\n";
         plan = 0;
+    }
+    for (auto p : sub_plans_) cufftDestroy(p);
+    sub_plans_.clear();
+    if (sub_work_)
+    {
+        cudaError_t err = cudaFree(sub_work_);
+        if (err != cudaSuccess) std::cerr << "cudaFree(sub_work_) failed: " << cudaGetErrorString(err) << "\n";
+        sub_work_ = nullptr;
+    }
+}
+
+void dfft_r2c_gpu_batch::execute_into(int n, cufftDoubleComplex* out)
+{
+    const size_t in_slot = static_cast<size_t>(dims_input_3D[0]) * dims_input_3D[1] * dims_input_3D[2];
+    const size_t out_slot = static_cast<size_t>(dims_input_3D[0] / 2 + 1) * dims_input_3D[1] * dims_input_3D[2];
+
+    // Order compute stream after the packs on the transfer stream
+    cudaEventRecord(transfer_ready_event_, transfer_stream_);
+    cudaStreamWaitEvent(stream_, transfer_ready_event_, 0);
+
+    // Largest plans first: e.g. 13 = 8 + 4 + 1
+    int done = 0;
+    for (int k = static_cast<int>(sub_plans_.size()) - 1; k >= 0; --k)
+    {
+        while (n - done >= sub_sizes_[k])
+        {
+            IBLGF_CUFFT_CHECK(cufftExecD2Z(sub_plans_[k], (cufftDoubleReal*)(input_cu_ + done * in_slot),
+                out + done * out_slot));
+            done += sub_sizes_[k];
+        }
     }
 }
 

@@ -917,6 +917,12 @@ class Fmm
         const bool start_communication = true;
 #endif
 
+#ifdef IBLGF_COMPILE_CUDA
+        // Each local source is forward-FFT'd once per fmm_Bx, including for the
+        // targets computed in the induced-field send callbacks below
+        conv_.begin_source_cache();
+#endif
+
         for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
                 ++B_it)
         {
@@ -981,6 +987,10 @@ class Fmm
         }
 #else
         domain_->decomposition().client()->finish_induced_field_communication();
+#endif
+
+#ifdef IBLGF_COMPILE_CUDA
+        conv_.end_source_cache();
 #endif
     }
 

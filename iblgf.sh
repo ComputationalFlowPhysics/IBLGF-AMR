@@ -154,6 +154,25 @@ time_cmd() {
   echo "$real"
 }
 
+time_cmd_legacy() {
+  # prints "real_seconds" to stdout
+  # Same as main's time_cmd: /usr/bin/time on an executable, with the command's
+  # stderr captured (not shown) and its exit status ignored. Used for
+  # `run-test --bench` when IBLGF_MPI_LAUNCHER is unset (e.g. the PR benchmark
+  # workflow), so those timings match main's.
+  local out real
+  out="$(/usr/bin/time -p "$@" 2>&1 1>/dev/null)"
+  real="$(echo "$out" | awk '/^real /{print $2; exit}')"
+
+  [[ -n "$real" ]] || {
+    echo "Error: failed to parse timing output. Raw output:" >&2
+    echo "$out" >&2
+    exit 2
+  }
+
+  echo "$real"
+}
+
 # -----------------------------
 # Run / test helpers
 # -----------------------------
@@ -524,10 +543,25 @@ do_run_test() {
       cd "$run_dir"
 
       real_s=""
-      if [[ "$mpi" -gt 1 ]]; then
-        real_s="$(time_cmd mpi_launch "$mpi" "$exe" "./$cfg_name")"
+      if [[ -n "${IBLGF_MPI_LAUNCHER:-}" ]]; then
+        if [[ "$mpi" -gt 1 ]]; then
+          real_s="$(time_cmd mpi_launch "$mpi" "$exe" "./$cfg_name")"
+        else
+          real_s="$(time_cmd "$exe" "./$cfg_name")"
+        fi
       else
-        real_s="$(time_cmd "$exe" "./$cfg_name")"
+        # No custom launcher: time exactly as main does
+        if [[ "$mpi" -gt 1 ]]; then
+          if have mpiexec; then
+            real_s="$(time_cmd_legacy mpiexec -np "$mpi" "$exe" "./$cfg_name")"
+          elif have mpirun; then
+            real_s="$(time_cmd_legacy mpirun -n "$mpi" "$exe" "./$cfg_name")"
+          else
+            die "Neither mpiexec nor mpirun found in PATH."
+          fi
+        else
+          real_s="$(time_cmd_legacy "$exe" "./$cfg_name")"
+        fi
       fi
 
       echo "$real_s"

@@ -699,13 +699,16 @@ def save_extrema_track_plot(
     if forcing_frequency is None:
         horizontal_name = "simulation time"
         axis.set_xlabel(horizontal_name)
+        title = f"Tracked {coordinate} coordinate versus {horizontal_name}"
     else:
-        horizontal_name = "forcing cycles"
+        horizontal_name = "normalized time"
         axis.set_xlabel(r"forcing cycles, $t^* = ft = t/T$")
-    axis.set_ylabel(f"retained h-maximum {coordinate} coordinate")
-    axis.set_title(
-        f"Tracked retained h-maxima: {coordinate} coordinate versus {horizontal_name}"
-    )
+        title = (
+            f"Tracked {coordinate} coordinate versus {horizontal_name} "
+            rf"($f={forcing_frequency:g}$)"
+        )
+    axis.set_ylabel(f"tracked {coordinate} coordinate")
+    axis.set_title(title)
     axis.grid(True, alpha=0.3)
     if tracks:
         legend_columns = max(1, math.ceil(len(tracks) / 20))
@@ -886,11 +889,20 @@ def main() -> int:
         action="store_true",
         help="Regenerate tracking and interaction PNGs from the saved track CSV only.",
     )
+    parser.add_argument(
+        "--forcing-frequency",
+        type=float,
+        help="Override b_f_freq when rendering forcing-cycle plots.",
+    )
     args = parser.parse_args()
     if args.stride < 1:
         parser.error("--stride must be a positive integer.")
     if args.workers < 1:
         parser.error("--workers must be a positive integer.")
+    if args.forcing_frequency is not None and (
+        not math.isfinite(args.forcing_frequency) or args.forcing_frequency <= 0.0
+    ):
+        parser.error("--forcing-frequency must be finite and greater than zero.")
 
     config = load_config(args.config_file)
     if "threshold_mask" not in config:
@@ -908,19 +920,22 @@ def main() -> int:
     interaction_plot_path = output_folder / "threshold_hmaxima_pair_interactions.png"
     records_by_frame = []
     frame_times = []
-    try:
-        forcing_frequency = simulation_parameter(
-            args.run_folder,
-            config,
-            "b_f_freq",
-        )
-    except (FileNotFoundError, ValueError) as error:
-        frequency_is_unavailable = isinstance(
-            error, FileNotFoundError
-        ) or "b_f_freq was not found" in str(error)
-        if not frequency_is_unavailable:
-            raise
-        forcing_frequency = math.nan
+    if args.forcing_frequency is not None:
+        forcing_frequency = args.forcing_frequency
+    else:
+        try:
+            forcing_frequency = simulation_parameter(
+                args.run_folder,
+                config,
+                "b_f_freq",
+            )
+        except (FileNotFoundError, ValueError) as error:
+            frequency_is_unavailable = isinstance(
+                error, FileNotFoundError
+            ) or "b_f_freq was not found" in str(error)
+            if not frequency_is_unavailable:
+                raise
+            forcing_frequency = math.nan
     forcing_duration = (
         simulation_parameter(args.run_folder, config, "b_f_tau")
         if math.isfinite(forcing_frequency) and forcing_frequency > 0.0

@@ -12,10 +12,15 @@
 
 #ifndef INCLUDED_CONVOLUTION_GPU_IBLGF_HPP
 #define INCLUDED_CONVOLUTION_GPU_IBLGF_HPP
+#include <algorithm>
 #include <complex>
 #include <cstring>
+#include <string>
+#include <cstdlib>
 #include <cufft.h>
 #include <iblgf/types.hpp>
+#include <iblgf/utilities/cuda_check.hpp>
+#include <unordered_map>
 #include <vector>
 
 namespace iblgf
@@ -37,13 +42,33 @@ __global__ void sum_batches(
     const cuDoubleComplex* input,
     cuDoubleComplex* output,
     int n_batches,
-    size_t size_per_batch);
+    size_t size_per_batch,
+    bool first_flush);
+
+// out[i] (+)= sum_p lgf[p][i] * src[p][i], one launch per target
+__global__ void prod_complex_sum_pairs(
+    const cuDoubleComplex* const* lgf_ptrs,
+    const size_t* lgf_sizes,
+    const cuDoubleComplex* const* src_ptrs,
+    int n_pairs,
+    cuDoubleComplex* output,
+    size_t size,
+    bool first_flush);
 
 // Scale complex array on device: data[i] *= alpha
 __global__ void scale_complex(
     cuDoubleComplex* data,
     size_t size,
     double alpha);
+
+// Scatter padded backward-FFT output into compact target field (+=)
+__global__ void add_solution_device_kernel(
+    const double* __restrict__ src,
+    double*       __restrict__ dst,
+    int offset_i, int offset_j, int offset_k,
+    int src_nx, int src_ny,
+    int dst_nx, int dst_ny,
+    int count_i, int count_j, int count_k);
 
 
 class dfft_r2c_gpu
@@ -232,10 +257,16 @@ class dfft_r2c_gpu_batch
         }
     }
     void execute_ptr(int current_batch);
+    // Forward-FFT the first n packed slots straight into n consecutive spectra at out,
+    // using power-of-two sub-plans so no empty slots are transformed
+    void execute_into(int n, cufftDoubleComplex* out);
 
   private:
     dims_3D                               dims_input_3D;
     int                                   max_batch_size_;
+    std::vector<int>                      sub_sizes_;      // 1, 2, 4, ... <= max_batch_size_
+    std::vector<cufftHandle>              sub_plans_;
+    void*                                 sub_work_ = nullptr; // work area shared by sub_plans_
     float_type*                           input_;          // Pinned host memory (allocated via cudaHostAlloc)
     std::vector<std::complex<float_type>> output_;
     float_type*                           input_cu_;
@@ -300,10 +331,14 @@ class Convolution_GPU
     Convolution_GPU(Convolution_GPU&& other) = default;
     Convolution_GPU& operator=(const Convolution_GPU& other) & = delete;
     Convolution_GPU& operator=(Convolution_GPU&& other) & = default;
-    ~Convolution_GPU() 
+    ~Convolution_GPU()
     {
         if (d_f0_ptrs_) cudaFree(d_f0_ptrs_);
         if (d_f0_sizes_) cudaFree(d_f0_sizes_);
+        free_pair_buffers();
+        for (auto* c : cache_chunks_) cudaFree(c);
+        if (stage_) cudaFreeHost(stage_);
+        if (acc_free_event_) cudaEventDestroy(acc_free_event_);
     }
 
     Convolution_GPU(dims_t _dims0, dims_t _dims1, int batch_size = 10)
@@ -322,16 +357,33 @@ class Convolution_GPU
     , d_f0_ptrs_(nullptr)
     , d_f0_sizes_(nullptr)
     , um_capacity_((batch_size > 0 ? batch_size : 1))
+    , spec_elems_(fft_backward_.input().size())
     {
         // Allocate device memory for LGF pointers and sizes
-        cudaMalloc(&d_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*));
-        cudaMalloc(&d_f0_sizes_, um_capacity_ * sizeof(size_t));
+        IBLGF_CUDA_CHECK(cudaMalloc(&d_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*)));
+        IBLGF_CUDA_CHECK(cudaMalloc(&d_f0_sizes_, um_capacity_ * sizeof(size_t)));
+
+        // IBLGF_SOURCE_CACHE=0 forces the per-pair forward FFT path (for A/B checks)
+        const char* env = std::getenv("IBLGF_SOURCE_CACHE");
+        cache_allowed_ = !(env && std::string(env) == "0");
+
+        // Recorded once the backward input has been consumed, so the next target
+        // can start accumulating into it without a host sync
+        IBLGF_CUDA_CHECK(cudaEventCreateWithFlags(&acc_free_event_, cudaEventDisableTiming));
+        IBLGF_CUDA_CHECK(cudaEventRecord(acc_free_event_, fft_backward_.stream()));
     }
 
     dims_t helper_next_pow_2(dims_t v)
     {
         dims_t tmp;
-        for (int i = 0; i < dimension; i++) { tmp[i] = v[i]; }
+        for (int i = 0; i < dimension; i++)
+        {
+            int x = v[i];
+            if (x <= 1) { tmp[i] = 1; continue; }
+            x--;
+            x |= x >> 1; x |= x >> 2; x |= x >> 4; x |= x >> 8; x |= x >> 16;
+            tmp[i] = x + 1;
+        }
         return tmp;
     }
     int helper_all_prod(dims_t v)
@@ -354,14 +406,48 @@ class Convolution_GPU
         return fft_forward0_.output().size();
     }
 
+    // Source spectra depend only on the source, so between begin_source_cache() and
+    // end_source_cache() each source field is forward-FFT'd once and its spectrum is
+    // reused for every target it influences. Sources must not change in between.
+    void begin_source_cache()
+    {
+        src_spec_.clear();
+        cache_slots_used_ = 0;
+        cache_enabled_ = cache_allowed_;
+    }
+
+    void end_source_cache()
+    {
+        flush_source_ffts();
+        src_spec_.clear();
+        cache_slots_used_ = 0;
+        cache_enabled_ = false;
+    }
+
+    // Between begin_deferred_backward() and end_deferred_backward(), apply_backward
+    // does not wait for each target: results are copied back asynchronously and
+    // land in the targets' host data at end_deferred_backward(). Target host data
+    // must not be read in between.
+    void begin_deferred_backward() { defer_d2h_ = true; }
+
+    void end_deferred_backward()
+    {
+        drain_copies();
+        defer_d2h_ = false;
+    }
+
     void fft_backward_field_clean()
     {
+        pair_lgf_.clear();
+        pair_lgf_sizes_.clear();
+        pair_src_.clear();
         number_fwrd_executed = 0;
         current_batch_size_ = 0;
-        std::fill(fft_backward_.input().begin(), fft_backward_.input().end(), 0);
-        // Clean device buffers so no stale accumulation carries between solves
-        cudaMemset(fft_backward_.input_cu(), 0, fft_backward_.input().size() * sizeof(cufftDoubleComplex));
-        cudaMemset(fft_forward1_batch.result_cu(), 0, fft_forward1_batch.result_size() * sizeof(cufftDoubleComplex));
+        first_flush_ = true;
+        // result_cu_ is always fully overwritten by prod_complex_add_ptr before sum_batches reads
+        // it, so no pre-zeroing is needed.  The backward input accumulator is handled by
+        // first_flush_: sum_batches writes (not adds) on the first flush each solve, so that
+        // memset is gone too.
     }
 
     template<typename Source, typename BlockType, class Kernel>
@@ -399,6 +485,21 @@ class Convolution_GPU
         if (!f0_entry || f0_entry->size == 0 || f0_entry->device == nullptr)
         {
             return;
+        }
+
+        if (cache_enabled_)
+        {
+            if (const auto* spec = cached_source_spectrum(_b))
+            {
+                pair_lgf_.push_back(f0_entry->device);
+                pair_lgf_sizes_.push_back(f0_entry->size);
+                pair_src_.push_back(spec);
+                number_fwrd_executed++;
+                return;
+            }
+            // No room to cache this source: per-pair path below, which reuses the
+            // same staging buffer, so finish the pending source FFTs first
+            flush_source_ffts();
         }
         
         // Store reference to LGF spectrum (no copy needed) and source field to batch buffers
@@ -468,22 +569,71 @@ class Convolution_GPU
             d_f0_sizes_,
             current_batch_size_,
             size_per_fft);
-        
-        // Sum batches into backward input on same stream
+        IBLGF_CUDA_CHECK_LAST_ERROR();
+
+        // Sum batches into backward input on same stream, once the previous
+        // target's backward transform has consumed it.
+        cudaStreamWaitEvent(fft_forward1_batch.stream(), acc_free_event_, 0);
+        // first_flush_=true means write directly (no pre-zero of input_cu_ needed).
         sum_batches<<<numBlocksSum, blockSize, 0, fft_forward1_batch.stream()>>>(
-            fft_forward1_batch.result_cu(), 
-            fft_backward_.input_cu(), 
-            current_batch_size_, 
-            size_per_fft);
-        
+            fft_forward1_batch.result_cu(),
+            fft_backward_.input_cu(),
+            current_batch_size_,
+            size_per_fft,
+            first_flush_);
+        IBLGF_CUDA_CHECK_LAST_ERROR();
+        first_flush_ = false;
+
         // Record completion event for safe reuse and downstream synchronization
         fft_forward1_batch.record_batch_done(fft_forward1_batch.stream());
-        
+
         // Reset batch counter and clear pointers
         current_batch_size_ = 0;
         fft_forward1_batch.f0_ptrs().clear();
         fft_forward1_batch.f0_sizes().clear();
     }   
+
+    // Accumulate sum_p lgf_p * src_p for the current target into the backward input
+    void flush_pairs()
+    {
+        flush_source_ffts();
+        const int n_pairs = static_cast<int>(pair_src_.size());
+        if (n_pairs == 0) return;
+
+        cudaStream_t stream = fft_forward1_batch.stream();
+        if (n_pairs > pair_capacity_)
+        {
+            free_pair_buffers();
+            pair_capacity_ = 2 * n_pairs;
+            IBLGF_CUDA_CHECK(cudaMalloc(&d_pair_lgf_, pair_capacity_ * sizeof(cufftDoubleComplex*)));
+            IBLGF_CUDA_CHECK(cudaMalloc(&d_pair_lgf_sizes_, pair_capacity_ * sizeof(size_t)));
+            IBLGF_CUDA_CHECK(cudaMalloc(&d_pair_src_, pair_capacity_ * sizeof(cufftDoubleComplex*)));
+        }
+        // Pageable sources are staged before cudaMemcpyAsync returns, so the host
+        // vectors can be reused right away
+        cudaMemcpyAsync(d_pair_lgf_, pair_lgf_.data(), n_pairs * sizeof(cufftDoubleComplex*),
+            cudaMemcpyHostToDevice, stream);
+        cudaMemcpyAsync(d_pair_lgf_sizes_, pair_lgf_sizes_.data(), n_pairs * sizeof(size_t),
+            cudaMemcpyHostToDevice, stream);
+        cudaMemcpyAsync(d_pair_src_, pair_src_.data(), n_pairs * sizeof(cufftDoubleComplex*),
+            cudaMemcpyHostToDevice, stream);
+
+        // The previous target's backward transform must be done with the input
+        cudaStreamWaitEvent(stream, acc_free_event_, 0);
+        int blockSize = 256;
+        int numBlocks = static_cast<int>((spec_elems_ + blockSize - 1) / blockSize);
+        prod_complex_sum_pairs<<<numBlocks, blockSize, 0, stream>>>(
+            d_pair_lgf_, d_pair_lgf_sizes_, d_pair_src_, n_pairs,
+            fft_backward_.input_cu(), spec_elems_, first_flush_);
+        IBLGF_CUDA_CHECK_LAST_ERROR();
+        first_flush_ = false;
+        fft_forward1_batch.record_batch_done(stream);
+
+        pair_count_ += n_pairs;
+        pair_lgf_.clear();
+        pair_lgf_sizes_.clear();
+        pair_src_.clear();
+    }
 
 
     void prod_complex_add(const complex_vector_t& a, const complex_vector_t& b, complex_vector_t& res)
@@ -504,6 +654,7 @@ class Convolution_GPU
         
         // Flush any remaining items in the batch
         flush_batch();
+        flush_pairs();
 
         // Ensure forward batch work is complete before using backward stream
         fft_forward1_batch.wait_for_batch_done(fft_backward_.stream());
@@ -517,17 +668,44 @@ class Convolution_GPU
         int numBlocks = (size_per_fft + blockSize - 1) / blockSize;
         scale_complex<<<numBlocks, blockSize, 0, fft_backward_.stream()>>>(
             fft_backward_.input_cu(), size_per_fft, scale);
+        IBLGF_CUDA_CHECK_LAST_ERROR();
 
         // Execute backward transform directly from device input
         fft_backward_.execute_device();
-        
-        // Copy result to host asynchronously
+        cudaEventRecord(acc_free_event_, fft_backward_.stream());
+
+#ifdef IBLGF_COMPILE_CUDA
+        {
+            const auto& ext = _extractor.extent();
+            // Ensure device buffer holds current target values before +=
+            if (!_target.device_valid())
+                _target.update_device(fft_backward_.stream());
+
+            int blkSz = 256;
+            int grdSz = (ext[0] * ext[1] * ext[2] + blkSz - 1) / blkSz;
+            add_solution_device_kernel<<<grdSz, blkSz, 0, fft_backward_.stream()>>>(
+                fft_backward_.output_cu_ptr(), _target.device_ptr(),
+                dims0_[0] - 1, dims0_[1] - 1, dims0_[2] - 1,
+                padded_dims_next_pow_2_[0], padded_dims_next_pow_2_[1],
+                ext[0], ext[1],
+                ext[0], ext[1], ext[2]);
+            IBLGF_CUDA_CHECK_LAST_ERROR();
+
+            if (defer_d2h_)
+            {
+                queue_copy_to_host(_target.data().data(), _target.device_ptr(), _target.data().size());
+                return;
+            }
+
+            IBLGF_CUDA_CHECK(cudaStreamSynchronize(fft_backward_.stream()));
+            IBLGF_CUDA_CHECK(cudaMemcpy(_target.data().data(), _target.device_ptr(),
+                _target.data().size() * sizeof(float_type), cudaMemcpyDeviceToHost));
+            return;
+        }
+#endif
+        // CPU fallback
         fft_backward_.copy_output_to_host();
-        
-        // MUST sync before accessing host data in add_solution()
         cudaStreamSynchronize(fft_backward_.stream());
-        
-        // Now process results (data copy is complete)
         add_solution(_extractor, _target);
     }
 
@@ -562,12 +740,134 @@ class Convolution_GPU
         }
     }
 
+  private:
+    // Returns the device spectrum of _b, queueing its forward FFT on first use, or
+    // nullptr if there is no memory left for another cached spectrum
+    template<class Field>
+    const cufftDoubleComplex* cached_source_spectrum(const Field& _b)
+    {
+        const void* key = static_cast<const void*>(&_b);
+        auto it = src_spec_.find(key);
+        if (it != src_spec_.end()) return it->second;
+
+        cufftDoubleComplex* slot = acquire_cache_slot();
+        if (!slot) return nullptr;
+
+        // Pending FFTs write consecutive slots of one chunk, at most one batch at a time
+        if (pending_n_ > 0 &&
+            (pending_n_ == max_batch_size_ || slot != pending_out_ + pending_n_ * spec_elems_))
+            flush_source_ffts();
+        // The staging buffer is shared with the per-pair path
+        flush_batch();
+
+        if (pending_n_ == 0) pending_out_ = slot;
+    #ifdef IBLGF_COMPILE_CUDA
+        if (_b.device_valid())
+            fft_forward1_batch.copy_field_gpu_device(_b.device_ptr(), _b.real_block().extent(), dims1_, pending_n_);
+        else
+            fft_forward1_batch.copy_field_gpu(_b, dims1_, pending_n_);
+    #else
+        fft_forward1_batch.copy_field_gpu(_b, dims1_, pending_n_);
+    #endif
+        pending_n_++;
+        src_spec_.emplace(key, slot);
+        return slot;
+    }
+
+    void flush_source_ffts()
+    {
+        if (pending_n_ == 0) return;
+        fft_forward1_batch.execute_into(pending_n_, pending_out_);
+        fft_forward1_batch.record_batch_done(fft_forward1_batch.stream());
+        source_fft_count_ += pending_n_;
+        pending_n_ = 0;
+        pending_out_ = nullptr;
+    }
+
+    cufftDoubleComplex* acquire_cache_slot()
+    {
+        const int chunk = cache_slots_used_ / cache_chunk_slots_;
+        if (chunk == static_cast<int>(cache_chunks_.size()))
+        {
+            // Grow one chunk at a time, leaving headroom for the rest of the solver
+            const size_t bytes = cache_chunk_slots_ * spec_elems_ * sizeof(cufftDoubleComplex);
+            size_t free_b = 0, total_b = 0;
+            if (cudaMemGetInfo(&free_b, &total_b) != cudaSuccess ||
+                free_b < bytes + cache_headroom_bytes_)
+                return nullptr;
+            cufftDoubleComplex* c = nullptr;
+            if (cudaMalloc(&c, bytes) != cudaSuccess)
+            {
+                cudaGetLastError(); // clear the allocation error
+                return nullptr;
+            }
+            cache_chunks_.push_back(c);
+        }
+        const int in_chunk = cache_slots_used_ % cache_chunk_slots_;
+        cache_slots_used_++;
+        return cache_chunks_[chunk] + static_cast<size_t>(in_chunk) * spec_elems_;
+    }
+
+    // Copy a target's device result into pinned staging on the backward stream;
+    // drain_copies() moves it into the target's (pageable) host data
+    void queue_copy_to_host(float_type* host, const float_type* device, size_t n)
+    {
+        if (stage_used_ + n > stage_capacity_)
+        {
+            drain_copies();
+            if (n > stage_capacity_)
+            {
+                // Can only grow once no copies are in flight, which drain_copies ensures
+                if (stage_) IBLGF_CUDA_CHECK(cudaFreeHost(stage_));
+                stage_ = nullptr;
+                stage_capacity_ = std::max(2 * stage_capacity_, 64 * n);
+                IBLGF_CUDA_CHECK(cudaHostAlloc((void**)&stage_, stage_capacity_ * sizeof(float_type),
+                    cudaHostAllocDefault));
+            }
+            else if (stage_capacity_ < max_stage_elems_)
+            {
+                // Full: grow so later fmm_Bx calls drain only once
+                IBLGF_CUDA_CHECK(cudaFreeHost(stage_));
+                stage_ = nullptr;
+                stage_capacity_ = std::min(2 * stage_capacity_, max_stage_elems_);
+                IBLGF_CUDA_CHECK(cudaHostAlloc((void**)&stage_, stage_capacity_ * sizeof(float_type),
+                    cudaHostAllocDefault));
+            }
+        }
+        IBLGF_CUDA_CHECK(cudaMemcpyAsync(stage_ + stage_used_, device, n * sizeof(float_type),
+            cudaMemcpyDeviceToHost, fft_backward_.stream()));
+        pending_copies_.push_back({host, stage_used_, n});
+        stage_used_ += n;
+    }
+
+    void drain_copies()
+    {
+        if (pending_copies_.empty()) return;
+        IBLGF_CUDA_CHECK(cudaStreamSynchronize(fft_backward_.stream()));
+        for (const auto& c : pending_copies_)
+            std::memcpy(c.host, stage_ + c.offset, c.n * sizeof(float_type));
+        pending_copies_.clear();
+        stage_used_ = 0;
+    }
+
+    void free_pair_buffers()
+    {
+        if (d_pair_lgf_) cudaFree(d_pair_lgf_);
+        if (d_pair_lgf_sizes_) cudaFree(d_pair_lgf_sizes_);
+        if (d_pair_src_) cudaFree(d_pair_src_);
+        d_pair_lgf_ = nullptr;
+        d_pair_lgf_sizes_ = nullptr;
+        d_pair_src_ = nullptr;
+        pair_capacity_ = 0;
+    }
+
   public:
     int fft_count_ = 0;
     int number_fwrd_executed =
         0; //register the number of forward procedure applied, if no forward applied, then don't need to apply backward one as well.
     int current_batch_size_ = 0;
     int max_batch_size_ = 0;
+    bool first_flush_ = true;
 
   private:
     dims_t padded_dims_;
@@ -587,6 +887,48 @@ class Convolution_GPU
     cufftDoubleComplex** d_f0_ptrs_;
     size_t*              d_f0_sizes_;
     int                  um_capacity_;
+
+    // Per-fmm_Bx cache of source spectra (see begin_source_cache)
+    size_t                                          spec_elems_;
+    bool                                            cache_allowed_ = true;
+    bool                                            cache_enabled_ = false;
+    std::unordered_map<const void*, const cufftDoubleComplex*> src_spec_;
+    std::vector<cufftDoubleComplex*>                cache_chunks_;
+    int                                             cache_slots_used_ = 0;
+    static constexpr int                            cache_chunk_slots_ = 64;
+    static constexpr size_t                         cache_headroom_bytes_ = size_t(1) << 30;
+    int                                             pending_n_ = 0;
+    cufftDoubleComplex*                             pending_out_ = nullptr;
+
+    // (LGF spectrum, source spectrum) pairs for the current target
+    std::vector<const cufftDoubleComplex*> pair_lgf_;
+    std::vector<size_t>                    pair_lgf_sizes_;
+    std::vector<const cufftDoubleComplex*> pair_src_;
+    cufftDoubleComplex**                   d_pair_lgf_ = nullptr;
+    size_t*                                d_pair_lgf_sizes_ = nullptr;
+    cufftDoubleComplex**                   d_pair_src_ = nullptr;
+    int                                    pair_capacity_ = 0;
+
+    // Deferred copies of target results back to the host (see begin_deferred_backward)
+    struct PendingCopy
+    {
+        float_type* host;
+        size_t      offset;
+        size_t      n;
+    };
+    cudaEvent_t              acc_free_event_ = nullptr;
+    bool                     defer_d2h_ = false;
+    float_type*              stage_ = nullptr; // pinned
+    size_t                   stage_capacity_ = 0;
+    size_t                   stage_used_ = 0;
+    std::vector<PendingCopy> pending_copies_;
+    // Cap on pinned staging (2 GiB); past this, apply_backward drains mid-loop
+    static constexpr size_t  max_stage_elems_ = (size_t(2) << 30) / sizeof(float_type);
+
+  public:
+    // Forward FFTs of sources through the cache, and (lgf, source) pairs consumed
+    std::size_t source_fft_count_ = 0;
+    std::size_t pair_count_ = 0;
 };
 } // namespace fft
 } // namespace iblgf

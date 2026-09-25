@@ -917,6 +917,15 @@ class Fmm
         const bool start_communication = true;
 #endif
 
+#ifdef IBLGF_COMPILE_CUDA
+        // Each local source is forward-FFT'd once per fmm_Bx, including for the
+        // targets computed in the induced-field send callbacks below
+        conv_.begin_source_cache();
+        // Local targets are only read on the host after this loop, so their
+        // results come back with one wait instead of one per target
+        conv_.begin_deferred_backward();
+#endif
+
         for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
                 ++B_it)
         {
@@ -928,6 +937,9 @@ class Fmm
                 compute_influence_field(
                         &(*it), _kernel, base_level_ - level, scale, _neighbor); //if target octant is local, compute influence from all local source octants
         }
+#ifdef IBLGF_COMPILE_CUDA
+        conv_.end_deferred_backward();
+#endif
         for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
                 ++B_it)
         {
@@ -981,6 +993,10 @@ class Fmm
         }
 #else
         domain_->decomposition().client()->finish_induced_field_communication();
+#endif
+
+#ifdef IBLGF_COMPILE_CUDA
+        conv_.end_source_cache();
 #endif
     }
 

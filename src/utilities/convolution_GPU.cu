@@ -10,6 +10,7 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
+#include <algorithm>
 #include <iblgf/utilities/convolution_GPU.hpp>
 
 namespace iblgf
@@ -65,28 +66,43 @@ prod_complex_add_ptr(const cuDoubleComplex* const* f0_ptrs, const cuDoubleComple
 }
 
 __global__ void
-sum_batches(const cuDoubleComplex* input, cuDoubleComplex* output, int batch_size, size_t size)
+sum_batches(const cuDoubleComplex* input, cuDoubleComplex* output, int batch_size, size_t size, bool first_flush)
 {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // Grid-stride loop for better load balancing
     size_t stride = blockDim.x * gridDim.x;
-    
+
     for (size_t i = idx; i < size; i += stride)
     {
         cuDoubleComplex sum = make_cuDoubleComplex(0.0, 0.0);
-        
-        // Unroll small batch loops for better performance
         #pragma unroll 4
         for (int b = 0; b < batch_size; ++b)
         {
-            // Use __ldg for read-only input data
             sum = cuCadd(sum, __ldg(&input[i + b * size]));
         }
-        
-        // Atomic add for accumulation (safer for concurrent access)
-        cuDoubleComplex old_val = output[i];
-        output[i] = cuCadd(old_val, sum);
+        // On first flush, write directly; otherwise accumulate.
+        // This lets callers skip zeroing the output buffer before the first batch.
+        output[i] = first_flush ? sum : cuCadd(output[i], sum);
+    }
+}
+
+__global__ void
+prod_complex_sum_pairs(const cuDoubleComplex* const* lgf_ptrs, const size_t* lgf_sizes,
+                       const cuDoubleComplex* const* src_ptrs, int n_pairs,
+                       cuDoubleComplex* output, size_t size, bool first_flush)
+{
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t stride = blockDim.x * gridDim.x;
+
+    for (size_t i = idx; i < size; i += stride)
+    {
+        cuDoubleComplex sum = make_cuDoubleComplex(0.0, 0.0);
+        for (int p = 0; p < n_pairs; ++p)
+        {
+            // Elements beyond an LGF spectrum's size count as zero
+            if (i < lgf_sizes[p])
+                sum = cuCadd(sum, cuCmul(__ldg(&lgf_ptrs[p][i]), __ldg(&src_ptrs[p][i])));
+        }
+        output[i] = first_flush ? sum : cuCadd(output[i], sum);
     }
 }
 
@@ -99,6 +115,26 @@ scale_complex(cuDoubleComplex* data, size_t size, double alpha)
     {
         cuDoubleComplex v = data[idx];
         data[idx] = make_cuDoubleComplex(alpha * cuCreal(v), alpha * cuCimag(v));
+    }
+}
+
+__global__ void
+add_solution_device_kernel(
+    const double* __restrict__ src,
+    double*       __restrict__ dst,
+    int offset_i, int offset_j, int offset_k,
+    int src_nx, int src_ny,
+    int dst_nx, int dst_ny,
+    int count_i, int count_j, int count_k)
+{
+    int total = count_i * count_j * count_k;
+    for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total; idx += blockDim.x * gridDim.x)
+    {
+        int li = idx % count_i;
+        int lj = (idx / count_i) % count_j;
+        int lk = idx / (count_i * count_j);
+        dst[li + lj * dst_nx + lk * dst_nx * dst_ny] +=
+            src[(offset_i + li) + (offset_j + lj) * src_nx + (offset_k + lk) * src_nx * src_ny];
     }
 }
 
@@ -141,17 +177,17 @@ dfft_r2c_gpu::dfft_r2c_gpu(dims_3D _dims_padded, dims_3D _dims_non_zero)
     const size_t real_size = sizeof(float_type) * NX * NY * NZ;
     const size_t complex_size = sizeof(cufftDoubleComplex) * NX_out * NY * NZ;
 
-    cudaMalloc((void**)&input_cu_, real_size);
-    cudaMalloc((void**)&output_cu_, complex_size);
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&input_cu_, real_size));
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&output_cu_, complex_size));
 
     // Create a stream and bind cuFFT plan to it
-    cudaStreamCreate(&stream_);
-    cufftPlan3d(&plan, NZ, NY, NX, CUFFT_D2Z);
-    cufftSetStream(plan, stream_);
+    IBLGF_CUDA_CHECK(cudaStreamCreate(&stream_));
+    IBLGF_CUFFT_CHECK(cufftPlan3d(&plan, NZ, NY, NX, CUFFT_D2Z));
+    IBLGF_CUFFT_CHECK(cufftSetStream(plan, stream_));
 
     // Pin host buffers to accelerate transfers
-    cudaHostRegister(input_.data(), input_.size() * sizeof(float_type), 0);
-    cudaHostRegister(output_.data(), output_.size() * sizeof(std::complex<float_type>), 0);
+    IBLGF_CUDA_CHECK(cudaHostRegister(input_.data(), input_.size() * sizeof(float_type), 0));
+    IBLGF_CUDA_CHECK(cudaHostRegister(output_.data(), output_.size() * sizeof(std::complex<float_type>), 0));
 }
 
 template<class Vector>
@@ -174,7 +210,7 @@ dfft_r2c_gpu::execute_whole()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type), cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    cudaStreamSynchronize(stream_);
+    IBLGF_CUDA_CHECK(cudaStreamSynchronize(stream_));
     // i think we want to add
     // cudaMemcpy(output_.data(), output_cu_, output_.size() * sizeof(std::complex<float_type>), cudaMemcpyDeviceToHost);
 }
@@ -231,7 +267,7 @@ dfft_r2c_gpu::execute()
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
     // Copy back on same stream and synchronize
     cudaMemcpyAsync(output_.data(), output_cu_, output_.size() * sizeof(std::complex<float_type>), cudaMemcpyDeviceToHost, stream_);
-    cudaStreamSynchronize(stream_);
+    IBLGF_CUDA_CHECK(cudaStreamSynchronize(stream_));
 }
 
 void
@@ -241,7 +277,7 @@ dfft_r2c_gpu::execute_ptr()
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type),
         cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    cudaStreamSynchronize(stream_);
+    IBLGF_CUDA_CHECK(cudaStreamSynchronize(stream_));
 }
 
 dfft_c2r_gpu::dfft_c2r_gpu(dims_3D _dims, dims_3D _dims_small)
@@ -257,17 +293,17 @@ dfft_c2r_gpu::dfft_c2r_gpu(dims_3D _dims, dims_3D _dims_small)
     const size_t real_size = sizeof(float_type) * NX * NY * NZ;
     const size_t complex_size = sizeof(cufftDoubleComplex) * NX_out * NY * NZ;
 
-    cudaMalloc((void**)&input_cu_, complex_size);
-    cudaMalloc((void**)&output_cu_, real_size);
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&input_cu_, complex_size));
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&output_cu_, real_size));
 
     // Create a stream and bind cuFFT plan to it
-    cudaStreamCreate(&stream_);
-    cufftPlan3d(&plan, NZ, NY, NX, CUFFT_Z2D);
-    cufftSetStream(plan, stream_);
+    IBLGF_CUDA_CHECK(cudaStreamCreate(&stream_));
+    IBLGF_CUFFT_CHECK(cufftPlan3d(&plan, NZ, NY, NX, CUFFT_Z2D));
+    IBLGF_CUFFT_CHECK(cufftSetStream(plan, stream_));
 
     // Pin host buffers to accelerate transfers
-    cudaHostRegister(input_.data(), input_.size() * sizeof(std::complex<float_type>), 0);
-    cudaHostRegister(output_.data(), output_.size() * sizeof(float_type), 0);
+    IBLGF_CUDA_CHECK(cudaHostRegister(input_.data(), input_.size() * sizeof(std::complex<float_type>), 0));
+    IBLGF_CUDA_CHECK(cudaHostRegister(output_.data(), output_.size() * sizeof(float_type), 0));
 }
 dfft_c2r_gpu::~dfft_c2r_gpu()
 {
@@ -320,7 +356,7 @@ dfft_c2r_gpu::execute()
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(std::complex<float_type>), cudaMemcpyHostToDevice, stream_);
     cufftExecZ2D(plan, (cufftDoubleComplex*)input_cu_, (cufftDoubleReal*)output_cu_);
     cudaMemcpyAsync(output_.data(), output_cu_, output_.size() * sizeof(float_type), cudaMemcpyDeviceToHost, stream_);
-    cudaStreamSynchronize(stream_);
+    IBLGF_CUDA_CHECK(cudaStreamSynchronize(stream_));
 }
 
 void
@@ -367,31 +403,49 @@ dfft_r2c_gpu_batch::dfft_r2c_gpu_batch(dims_3D _dims_padded, dims_3D _dims_non_z
     const size_t complex_size = sizeof(cufftDoubleComplex) * NX_out * NY * NZ * max_batch_size_;
 
     // Allocate pinned host memory for faster HtoD transfers
-    cudaHostAlloc((void**)&input_, real_size, cudaHostAllocDefault);
-    cudaMalloc((void**)&input_cu_, real_size);
-    cudaMalloc((void**)&output_cu_, complex_size);
-    cudaMalloc((void**)&result_cu_, complex_size);
+    IBLGF_CUDA_CHECK(cudaHostAlloc((void**)&input_, real_size, cudaHostAllocDefault));
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&input_cu_, real_size));
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&output_cu_, complex_size));
+    IBLGF_CUDA_CHECK(cudaMalloc((void**)&result_cu_, complex_size));
 
     // Zero both buffers at init for clean state
     std::memset(input_, 0, real_size);
-    cudaMemset(input_cu_, 0, real_size);
+    IBLGF_CUDA_CHECK(cudaMemset(input_cu_, 0, real_size));
 
     // Create CUDA streams for asynchronous operations
-    cudaStreamCreate(&stream_);
-    cudaStreamCreate(&transfer_stream_);
+    IBLGF_CUDA_CHECK(cudaStreamCreate(&stream_));
+    IBLGF_CUDA_CHECK(cudaStreamCreate(&transfer_stream_));
 
     int n[3] = {NZ, NY, NX};
-    cufftPlanMany(&plan, 3, n, NULL, 1, NZ * NY * NX, NULL, 1, NX_out * NY * NZ, CUFFT_D2Z,
-        max_batch_size_);
+    IBLGF_CUFFT_CHECK(cufftPlanMany(&plan, 3, n, NULL, 1, NZ * NY * NX, NULL, 1, NX_out * NY * NZ, CUFFT_D2Z,
+        max_batch_size_));
     // Bind cuFFT plan to main compute stream after plan creation
-    cufftSetStream(plan, stream_);
+    IBLGF_CUFFT_CHECK(cufftSetStream(plan, stream_));
+
+    // Power-of-two batch plans for execute_into, sharing one work area
+    size_t work_max = 0;
+    for (int b = 1; b <= max_batch_size_; b *= 2)
+    {
+        cufftHandle p;
+        size_t      work = 0;
+        IBLGF_CUFFT_CHECK(cufftCreate(&p));
+        IBLGF_CUFFT_CHECK(cufftSetAutoAllocation(p, 0));
+        IBLGF_CUFFT_CHECK(cufftMakePlanMany(p, 3, n, NULL, 1, NZ * NY * NX, NULL, 1, NX_out * NY * NZ,
+            CUFFT_D2Z, b, &work));
+        IBLGF_CUFFT_CHECK(cufftSetStream(p, stream_));
+        sub_sizes_.push_back(b);
+        sub_plans_.push_back(p);
+        work_max = std::max(work_max, work);
+    }
+    IBLGF_CUDA_CHECK(cudaMalloc(&sub_work_, work_max > 0 ? work_max : 1));
+    for (auto p : sub_plans_) IBLGF_CUFFT_CHECK(cufftSetWorkArea(p, sub_work_));
 
     // Event used to order compute stream after transfer stream without host blocking
-    cudaEventCreateWithFlags(&transfer_ready_event_, cudaEventDisableTiming);
+    IBLGF_CUDA_CHECK(cudaEventCreateWithFlags(&transfer_ready_event_, cudaEventDisableTiming));
     // Event used to signal compute completion for safe buffer reuse
-    cudaEventCreateWithFlags(&batch_done_event_, cudaEventDisableTiming);
+    IBLGF_CUDA_CHECK(cudaEventCreateWithFlags(&batch_done_event_, cudaEventDisableTiming));
     // Mark event complete initially so first batch doesn't wait
-    cudaEventRecord(batch_done_event_, stream_);
+    IBLGF_CUDA_CHECK(cudaEventRecord(batch_done_event_, stream_));
 }
 
 dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
@@ -471,6 +525,36 @@ dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
         if (res != CUFFT_SUCCESS) std::cerr << "cufftDestroy(plan) failed: " << res << "\n";
         plan = 0;
     }
+    for (auto p : sub_plans_) cufftDestroy(p);
+    sub_plans_.clear();
+    if (sub_work_)
+    {
+        cudaError_t err = cudaFree(sub_work_);
+        if (err != cudaSuccess) std::cerr << "cudaFree(sub_work_) failed: " << cudaGetErrorString(err) << "\n";
+        sub_work_ = nullptr;
+    }
+}
+
+void dfft_r2c_gpu_batch::execute_into(int n, cufftDoubleComplex* out)
+{
+    const size_t in_slot = static_cast<size_t>(dims_input_3D[0]) * dims_input_3D[1] * dims_input_3D[2];
+    const size_t out_slot = static_cast<size_t>(dims_input_3D[0] / 2 + 1) * dims_input_3D[1] * dims_input_3D[2];
+
+    // Order compute stream after the packs on the transfer stream
+    cudaEventRecord(transfer_ready_event_, transfer_stream_);
+    cudaStreamWaitEvent(stream_, transfer_ready_event_, 0);
+
+    // Largest plans first: e.g. 13 = 8 + 4 + 1
+    int done = 0;
+    for (int k = static_cast<int>(sub_plans_.size()) - 1; k >= 0; --k)
+    {
+        while (n - done >= sub_sizes_[k])
+        {
+            IBLGF_CUFFT_CHECK(cufftExecD2Z(sub_plans_[k], (cufftDoubleReal*)(input_cu_ + done * in_slot),
+                out + done * out_slot));
+            done += sub_sizes_[k];
+        }
+    }
 }
 
 void dfft_r2c_gpu_batch::execute_ptr(int current_batch)
@@ -521,6 +605,7 @@ void dfft_r2c_gpu_batch::copy_field_gpu_device(const float_type* src_device, dim
         dst_nx, dst_ny, dst_nz,
         dims_v[0], dims_v[1], dims_v[2],
         batch_offset_elems);
+    IBLGF_CUDA_CHECK_LAST_ERROR();
 }
 
 } //namespace fft

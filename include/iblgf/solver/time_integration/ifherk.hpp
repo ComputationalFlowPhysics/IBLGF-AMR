@@ -27,6 +27,7 @@
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/operators/operators.hpp>
+#include <iblgf/operators/operators_gpu.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
 namespace iblgf
@@ -521,7 +522,8 @@ class Ifherk
 
         force_type All_sum_f(ib.force().size(), tmp_coord);
         force_type All_sum_f_glob(ib.force().size(), tmp_coord);
-        this->template ComputeForcing<u_type, p_type, u_i_type, d_i_type>(All_sum_f);
+        if (ib.size() > 0)
+            this->template ComputeForcing<u_type, p_type, u_i_type, d_i_type>(All_sum_f);
 
         if (ib.size() > 0)
         {
@@ -1322,10 +1324,9 @@ class Ifherk
 
             for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
             {
-                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
-
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
+                    auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
                     int N = it->data().descriptor().extent()[0];
 		    if(domain_->dimension() == 3) {
                     view(lin_data, xt::all(), xt::all(),
@@ -1352,7 +1353,7 @@ class Ifherk
                 else
                 {
                     //TODO whether to clean base_level correction?
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
         }
@@ -1371,9 +1372,7 @@ class Ifherk
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
                 continue;
             }
@@ -1385,9 +1384,7 @@ class Ifherk
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
 
@@ -1465,7 +1462,7 @@ private:
         add<face_aux_type, face_aux2_type>(-1.0);
 
         // IB
-        if (std::fabs(_alpha)>1e-14)
+        if (std::fabs(_alpha)>1e-14 && domain_->ib().size() > 0)
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
 
         domain_->client_communicator().barrier();
@@ -1641,12 +1638,63 @@ private:
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
-        //up_and_down<Source>();
+#ifdef IBLGF_COMPILE_CUDA
+        cudaStream_t nl_stream;
+        cudaStreamCreate(&nl_stream);
 
+        // --- GPU curl pass ---
+        for (int l = domain_->tree()->base_level(); l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l); // MPI fills ghosts on host
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const double inv_dx =
+                    math::pow2(it->refinement_level()) / dx_base;
+                domain::gpu::launch_curl_gpu<Source, edge_aux_type>(
+                    **it, inv_dx, nl_stream);
+
+                // D2H edge_aux so next MPI exchange can read it from host
+                for (std::size_t c = 0; c < edge_aux_type::nFields(); ++c)
+                    it->data_r(edge_aux_type::tag(), c).sync_to_host(nl_stream);
+            }
+            cudaStreamSynchronize(nl_stream);
+        }
+
+        // Background velocity subtraction (small, CPU)
+        copy<Source, face_aux_type>();
+        domain::Operator::add_field_expression<face_aux_type>(
+            domain_, simulation_->frame_vel(), T_stage_, -1.0);
+
+        // --- GPU nonlinear pass ---
+        for (int l = domain_->tree()->base_level(); l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l); // MPI
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::gpu::launch_nonlinear_gpu<face_aux_type, edge_aux_type, Target>(
+                    **it, static_cast<double>(_scale), nl_stream);
+
+                // D2H Target so downstream code can read from host
+                for (std::size_t c = 0; c < Target::nFields(); ++c)
+                    it->data_r(Target::tag(), c).sync_to_host(nl_stream);
+            }
+            cudaStreamSynchronize(nl_stream);
+        }
+
+        cudaStreamDestroy(nl_stream);
+
+#else
+        // CPU path (unchanged)
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-
             client->template buffer_exchange<Source>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1660,7 +1708,6 @@ private:
             }
         }
 
-        // clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -1684,19 +1731,15 @@ private:
                 {
                     auto& lin_data =
                         it->data_r(Target::tag(), field_idx).linalg_data();
-                    lin_data *= _scale; //scale with time step size
+                    lin_data *= _scale;
                 }
             }
-
-            //client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true,3);
         }
+#endif
 
         if (std::abs(b_f_mag) > 1e-5) {
             add_body_force<Target>(_scale);
         }
-
-        
     }
 
     template<class target>

@@ -33,7 +33,6 @@ cpu_count() {
   fi
 }
 
-# *added*
 default_build_jobs() {
   # Env override wins, otherwise use cpu_count()
   echo "${IBLGF_BUILD_JOBS:-$(cpu_count)}"
@@ -56,7 +55,27 @@ need_nvcc_if_gpu() {
     fi
   fi
 }
-# *end of added*
+
+mpi_include_flags() {
+  local output includes token
+
+  output=""
+  if have mpicxx; then
+    output="$(mpicxx -show 2>/dev/null || true)"
+  fi
+  if [[ -z "$output" ]] && have mpicc; then
+    output="$(mpicc -show 2>/dev/null || true)"
+  fi
+
+  includes=""
+  for token in $output; do
+    if [[ "$token" == -I* ]]; then
+      includes+="${includes:+ }$token"
+    fi
+  done
+
+  echo "$includes"
+}
 
 script_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
@@ -97,8 +116,50 @@ Run a named test (staged run dir + logs + metadata):
 USAGE
 }
 
+mpi_launch() {
+  # mpi_launch <ranks> <exe> [args...]
+  # IBLGF_MPI_LAUNCHER (e.g. "srun" on Cray systems without mpirun) wins;
+  # otherwise fall back to mpiexec, then mpirun.
+  local np="$1"; shift
+  if [[ -n "${IBLGF_MPI_LAUNCHER:-}" ]]; then
+    # shellcheck disable=SC2086  # launcher may carry its own flags
+    $IBLGF_MPI_LAUNCHER -n "$np" "$@"
+  elif have mpiexec; then
+    mpiexec -np "$np" "$@"
+  elif have mpirun; then
+    mpirun -n "$np" "$@"
+  else
+    die "No MPI launcher found (set IBLGF_MPI_LAUNCHER, or put mpiexec/mpirun in PATH)."
+  fi
+}
+
 time_cmd() {
   # prints "real_seconds" to stdout
+  # Uses the bash `time` keyword (not /usr/bin/time) so the command can be a
+  # shell function such as mpi_launch. The command's stdout is discarded and
+  # its stderr passes through; only the timing report is captured.
+  local real rc=0 TIMEFORMAT='%R'
+  { real="$( { time "$@" 1>/dev/null 2>&3; } 2>&1 )" || rc=$?; } 3>&2
+  [[ "$rc" -eq 0 ]] || {
+    echo "Error: timed command failed (exit $rc): $*" >&2
+    exit "$rc"
+  }
+
+  [[ "$real" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
+    echo "Error: failed to parse timing output. Raw output:" >&2
+    echo "$real" >&2
+    exit 2
+  }
+
+  echo "$real"
+}
+
+time_cmd_legacy() {
+  # prints "real_seconds" to stdout
+  # Same as main's time_cmd: /usr/bin/time on an executable, with the command's
+  # stderr captured (not shown) and its exit status ignored. Used for
+  # `run-test --bench` when IBLGF_MPI_LAUNCHER is unset (e.g. the PR benchmark
+  # workflow), so those timings match main's.
   local out real
   out="$(/usr/bin/time -p "$@" 2>&1 1>/dev/null)"
   real="$(echo "$out" | awk '/^real /{print $2; exit}')"
@@ -210,7 +271,6 @@ find_test_config() {
   return 1
 }
 
-# *added*
 latest_run_dir() {
   local test_name="$1"
   local base
@@ -220,7 +280,6 @@ latest_run_dir() {
   # Pick newest directory by modification time
   ls -1dt "$base"/*/ 2>/dev/null | head -n 1
 }
-# *end of added*
 
 do_configure() {
   while [[ $# -gt 0 ]]; do
@@ -242,6 +301,11 @@ do_configure() {
   local cmake_args=()
   if [[ "$USE_GPU" -eq 1 ]]; then
     cmake_args+=(-DUSE_GPU=True)
+    local mpi_includes
+    mpi_includes="$(mpi_include_flags)"
+    if [[ -n "$mpi_includes" ]]; then
+      cmake_args+=("-DCMAKE_CUDA_FLAGS:STRING=${mpi_includes}")
+    fi
   fi
   
   # Allow overriding MPI ranks for tests via environment variable
@@ -337,8 +401,8 @@ do_run() {
 
   echo "==> Running $exe_path with $config (-n $mpi)"
 
-  if [[ "$mpi" -gt 1 ]] && have mpirun; then
-    mpirun -n "$mpi" "$exe_path" "$config"
+  if [[ "$mpi" -gt 1 ]] && { [[ -n "${IBLGF_MPI_LAUNCHER:-}" ]] || have mpirun; }; then
+    mpi_launch "$mpi" "$exe_path" "$config"
   else
     "$exe_path" "$config"
   fi
@@ -479,16 +543,25 @@ do_run_test() {
       cd "$run_dir"
 
       real_s=""
-      if [[ "$mpi" -gt 1 ]]; then
-        if have mpiexec; then
-          real_s="$(time_cmd mpiexec -np "$mpi" "$exe" "./$cfg_name")"
-        elif have mpirun; then
-          real_s="$(time_cmd mpirun -n "$mpi" "$exe" "./$cfg_name")"
+      if [[ -n "${IBLGF_MPI_LAUNCHER:-}" ]]; then
+        if [[ "$mpi" -gt 1 ]]; then
+          real_s="$(time_cmd mpi_launch "$mpi" "$exe" "./$cfg_name")"
         else
-          die "Neither mpiexec nor mpirun found in PATH."
+          real_s="$(time_cmd "$exe" "./$cfg_name")"
         fi
       else
-        real_s="$(time_cmd "$exe" "./$cfg_name")"
+        # No custom launcher: time exactly as main does
+        if [[ "$mpi" -gt 1 ]]; then
+          if have mpiexec; then
+            real_s="$(time_cmd_legacy mpiexec -np "$mpi" "$exe" "./$cfg_name")"
+          elif have mpirun; then
+            real_s="$(time_cmd_legacy mpirun -n "$mpi" "$exe" "./$cfg_name")"
+          else
+            die "Neither mpiexec nor mpirun found in PATH."
+          fi
+        else
+          real_s="$(time_cmd_legacy "$exe" "./$cfg_name")"
+        fi
       fi
 
       echo "$real_s"
@@ -504,13 +577,7 @@ do_run_test() {
     cd "$run_dir"
 
     if [[ "$mpi" -gt 1 ]]; then
-      if have mpiexec; then
-        mpiexec -np "$mpi" "$exe" "./$cfg_name" > stdout.log 2> stderr.log
-      elif have mpirun; then
-        mpirun -n "$mpi" "$exe" "./$cfg_name" > stdout.log 2> stderr.log
-      else
-        die "Neither mpiexec nor mpirun found in PATH."
-      fi
+      mpi_launch "$mpi" "$exe" "./$cfg_name" > stdout.log 2> stderr.log
     else
       "$exe" "./$cfg_name" > stdout.log 2> stderr.log
     fi

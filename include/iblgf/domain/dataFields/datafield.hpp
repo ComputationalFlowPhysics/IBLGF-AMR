@@ -17,6 +17,7 @@
 #include <tuple>
 #include <iostream>
 #include <algorithm>
+#include <cstring>
 #include <optional>
 // IBLGF-specific
 #include <iblgf/types.hpp>
@@ -205,6 +206,13 @@ class DataField : public BlockDescriptor<int, Dim>
 
     auto& data() { return data_; }
     auto  data_ptr() { return &data_; }
+
+    // Zero the host data. linalg_data() views all of data_, but std::fill over
+    // that strided xtensor view is far slower than one contiguous memset.
+    void zero() noexcept
+    {
+        if (!data_.empty()) std::memset(data_.data(), 0, data_.size() * sizeof(data_type));
+    }
 
     auto& linalg_data() { return cube_->data_; }
     auto& linalg() { return cube_; }

@@ -900,8 +900,7 @@ class PoissonSolver
         {
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            auto& lin_data = it->data_r(field::tag()).linalg_data();
-            std::fill(lin_data.begin(), lin_data.end(), 0.0);
+            it->data_r(field::tag()).zero();
         }
     }
 
@@ -913,8 +912,7 @@ class PoissonSolver
         {
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            auto& lin_data = it->data_r(field::tag(), field_idx).linalg_data();
-            std::fill(lin_data.begin(), lin_data.end(), 0.0);
+            it->data_r(field::tag(), field_idx).zero();
         }
     }
 

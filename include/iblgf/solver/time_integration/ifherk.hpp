@@ -1324,10 +1324,9 @@ class Ifherk
 
             for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
             {
-                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
-
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
+                    auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
                     int N = it->data().descriptor().extent()[0];
 		    if(domain_->dimension() == 3) {
                     view(lin_data, xt::all(), xt::all(),
@@ -1354,7 +1353,7 @@ class Ifherk
                 else
                 {
                     //TODO whether to clean base_level correction?
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
         }
@@ -1373,9 +1372,7 @@ class Ifherk
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
                 continue;
             }
@@ -1387,9 +1384,7 @@ class Ifherk
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
 

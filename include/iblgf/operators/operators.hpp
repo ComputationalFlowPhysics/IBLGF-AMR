@@ -22,6 +22,7 @@
 #include <iblgf/types.hpp>
 #include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
 #include <cmath>
+#include <array>
 #include <vector>
 
 namespace iblgf
@@ -51,8 +52,7 @@ struct Operator
             {
                 if (!it->has_data() || !it->data().is_allocated()) continue;
             
-                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
-                std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                it->data_r(F::tag(), field_idx).zero();
             }
         }
 #else
@@ -62,8 +62,7 @@ struct Operator
             for (std::size_t field_idx = 0; field_idx < F::nFields();
                  ++field_idx)
             {
-                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
-                std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                it->data_r(F::tag(), field_idx).zero();
             }
         }
 #endif
@@ -200,9 +199,7 @@ struct Operator
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
         }
@@ -218,9 +215,7 @@ struct Operator
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
         }
@@ -338,9 +333,7 @@ struct Operator
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
         }
@@ -356,9 +349,7 @@ struct Operator
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    it->data_r(F::tag(), field_idx).zero();
                 }
             }
         }
@@ -758,54 +749,45 @@ struct Operator
             }
         }
 #else
-        for (std::size_t field_idx = 0; field_idx < Field::nFields();
-             ++field_idx)
+        // fc(pct) and fc(1 - pct) for every integer offset i from the block base,
+        // per dimension, computed exactly as local_pct() would: pct = i/(e-1).
+        // The node loop then only needs lc - base, with no divisions or lround.
+        const auto bbase = block.bounding_box().base();
+        const auto bext = block.bounding_box().extent();
+        const int  dimension = static_cast<int>(bext.size());
+        std::array<std::vector<float_type>, 3> lo, hi;
+        for (int k = 0; k < dimension; ++k)
         {
-            for (auto& n : block.node_field())
+            lo[k].resize(bext[k]);
+            hi[k].resize(bext[k]);
+            for (int i = 0; i < bext[k]; ++i)
             {
-                auto pct = n.local_pct();
-                int  dimension = pct.size();
-
-                float_type square = 0.0;
-                float_type c = 0;
-
-                if ((z == 0) && (dimension == 3))
-                {
-                    square = std::max(square, fc(pct[2]));
-                    c += 1;
-                }
-                else if ((z == (dim - 1)) && (dimension == 3))
-                {
-                    square = std::max(square, fc(1 - pct[2]));
-                    c += 1;
-                }
-
-                if (y == 0)
-                {
-                    square = std::max(square, fc(pct[1]));
-                    c += 1;
-                }
-                else if (y == (dim - 1))
-                {
-                    square = std::max(square, fc(1 - pct[1]));
-                    c += 1;
-                }
-
-                if (x == 0)
-                {
-                    square = std::max(square, fc(pct[0]));
-                    c += 1;
-                }
-                else if (x == (dim - 1))
-                {
-                    square = std::max(square, fc(1 - pct[0]));
-                    c += 1;
-                }
-
-                if (c > 0)
-                    n(Field::tag(), field_idx) =
-                        n(Field::tag(), field_idx) * square;
+                const float_type pct = static_cast<float_type>(i) / static_cast<float_type>(bext[k] - 1);
+                lo[k][i] = fc(pct);
+                hi[k][i] = fc(1 - pct);
             }
+        }
+        // Which faces this neighbor touches: 0 = low side, 1 = high side, -1 = none
+        const int side[3] = {x == 0 ? 0 : (x == dim - 1 ? 1 : -1),
+            y == 0 ? 0 : (y == dim - 1 ? 1 : -1),
+            (dimension == 3) ? (z == 0 ? 0 : (z == dim - 1 ? 1 : -1)) : -1};
+        if (side[0] < 0 && side[1] < 0 && side[2] < 0) return;
+
+        for (auto& n : block.node_field())
+        {
+            const auto lc = n.level_coordinate();
+            float_type square = 0.0;
+            // Same order as before: z, then y, then x
+            for (int k = 2; k >= 0; --k)
+            {
+                if (side[k] < 0) continue;
+                const int i = lc[k] - bbase[k];
+                square = std::max(square, side[k] == 0 ? lo[k][i] : hi[k][i]);
+            }
+            // The damping factor doesn't depend on the field; each field is
+            // still multiplied by it exactly once per call
+            for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
+                n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * square;
         }
 #endif
     }

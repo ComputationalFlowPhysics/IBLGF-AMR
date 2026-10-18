@@ -159,6 +159,37 @@ void Ifherk<Setup>::body_force_profile_3d(
 }
 
 template<class Setup>
+void Ifherk<Setup>::body_force_profile_3d_nonaxisymmetric(
+    float_type x,
+    float_type y,
+    float_type z,
+    float_type& force_x) const noexcept
+{
+    body_force_profile_3d(x, y, z, force_x);
+    if (force_x == 0.0)
+        return;
+
+    const auto pulse_index = body_force_pulse_index();
+    const auto y0 = body_force_parameter(
+        b_f_y0_values_, b_f_y0, pulse_index);
+    const auto z0 = body_force_parameter(
+        b_f_z0_values_, b_f_z0, pulse_index);
+    const auto y_shift = y - y0;
+    const auto z_shift = z - z0;
+
+    // The ring axis is x. At r=0, use the angular mean (theta is undefined).
+    if (y_shift == 0.0 && z_shift == 0.0)
+        return;
+    const auto theta = std::atan2(z_shift, y_shift);
+    float_type modulation = 1.0;
+    for (std::size_t i = 0; i < b_f_m.size(); ++i)
+        modulation += b_f_epsilon_m[i] *
+            std::cos(b_f_m[i] * theta + b_f_phi_m[i]);
+
+    force_x *= modulation;
+}
+
+template<class Setup>
 typename Ifherk<Setup>::vortex_diagnostics_t
 Ifherk<Setup>::vortex_diagnostics()
 {

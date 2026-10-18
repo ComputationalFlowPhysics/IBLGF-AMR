@@ -172,6 +172,26 @@ class Ifherk
             "b_f_alpha_r", 0.2);
         b_f_alpha_x = _simulation->dictionary()->template get_or<float_type>(
             "b_f_alpha_x", 0.2);
+        b_f_m = _simulation->dictionary()->has_key("b_f_m")
+            ? _simulation->dictionary()->template get_vector<int>("b_f_m")
+            : std::vector<int>{2};
+        b_f_epsilon_m = _simulation->dictionary()->has_key("b_f_epsilon_m")
+            ? _simulation->dictionary()->template get_vector<float_type>("b_f_epsilon_m")
+            : std::vector<float_type>{0.0};
+        b_f_phi_m = _simulation->dictionary()->has_key("b_f_phi_m")
+            ? _simulation->dictionary()->template get_vector<float_type>("b_f_phi_m")
+            : std::vector<float_type>(b_f_m.size(), 0.0);
+        if (b_f_m.size() != b_f_epsilon_m.size() ||
+            b_f_m.size() != b_f_phi_m.size())
+            throw std::runtime_error(
+                "b_f_m, b_f_epsilon_m, and b_f_phi_m must have equal lengths");
+        for (std::size_t i = 0; i < b_f_m.size(); ++i)
+        {
+            if (b_f_m[i] < 1 || !std::isfinite(b_f_epsilon_m[i]) ||
+                !std::isfinite(b_f_phi_m[i]))
+                throw std::runtime_error(
+                    "Body-force modes must be positive integers; amplitudes and phases must be finite");
+        }
         b_f_mag_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
             "b_f_mag", {});
         b_f_tau_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
@@ -878,6 +898,12 @@ class Ifherk
         float_type& force_x) const noexcept;
 
     void body_force_profile_3d(
+        float_type x,
+        float_type y,
+        float_type z,
+        float_type& force_x) const noexcept;
+
+    void body_force_profile_3d_nonaxisymmetric(
         float_type x,
         float_type y,
         float_type z,
@@ -1930,7 +1956,7 @@ private:
                 {
                     float_type z = static_cast<float_type>
                         (coord[2]) * dx_level;
-                    body_force_profile_3d(x, y, z, force_x);
+                    body_force_profile_3d_nonaxisymmetric(x, y, z, force_x);
                 }
 					node(target::tag(), 0) -= scale * force_x;
             }
@@ -2433,6 +2459,8 @@ private:
     float_type b_f_z0, b_f_R;
     float_type b_f_alpha, b_f_alpha_r, b_f_alpha_x;
     int b_f_num_pulse;
+    std::vector<int> b_f_m;
+    std::vector<float_type> b_f_epsilon_m, b_f_phi_m;
     std::vector<float_type> b_f_mag_values_;
     std::vector<float_type> b_f_tau_values_;
     std::vector<float_type> b_f_beta_values_;

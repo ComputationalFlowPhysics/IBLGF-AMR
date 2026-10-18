@@ -71,7 +71,8 @@ runs_pybind/
 /formation_number_plot/mass*configs*/
 /formation_3d/mass*configs*/
 
-# Persistent state and per-attempt logs for resumable 3D sweeps
+# Persistent state and per-attempt logs for resumable 2D and 3D sweeps
+/formation_number_plot/mass_sweep_state/
 /formation_3d/mass_sweep_state/
 
 # Generated 2D and 3D Slurm job logs
@@ -83,3 +84,65 @@ runs_pybind/
 # Generated per-config 2D and 3D batch logs
 /formation_number_plot/mass_logs_remote/
 /formation_3d/mass_logs_remote/
+
+# Generated analysis experiment folders (including their run manifests)
+/ritta_plotting_2D/final_plots*/
+/ritta_plotting_3D/final_plots*/
+/ritta_vortex_identification/final_plots*/
+/ritta_plotting_2D/tau_sweep*/
+/ritta_plotting_3D/tau_sweep*/
+/ritta_vortex_identification/tau_sweep*/
+
+# Plots, animation frames, movies, analysis tables, and logs in custom output folders
+# Scoped to analysis tools so reference images/data elsewhere remain visible.
+/ritta_plotting_2D/**/*.png
+/ritta_plotting_2D/**/*.jpg
+/ritta_plotting_2D/**/*.jpeg
+/ritta_plotting_2D/**/*.svg
+/ritta_plotting_2D/**/*.pdf
+/ritta_plotting_2D/**/*.gif
+/ritta_plotting_2D/**/*.mp4
+/ritta_plotting_2D/**/*.webm
+/ritta_plotting_2D/**/*.h5
+/ritta_plotting_2D/**/*.hdf5
+/ritta_plotting_2D/**/*.csv
+/ritta_plotting_2D/**/*.tsv
+/ritta_plotting_2D/**/*.npz
+/ritta_plotting_2D/**/*.npy
+/ritta_plotting_2D/**/*.log
+/ritta_plotting_2D/**/slurm-*.out
+/ritta_plotting_2D/**/slurm-*.err
+/ritta_plotting_3D/**/*.png
+/ritta_plotting_3D/**/*.jpg
+/ritta_plotting_3D/**/*.jpeg
+/ritta_plotting_3D/**/*.svg
+/ritta_plotting_3D/**/*.pdf
+/ritta_plotting_3D/**/*.gif
+/ritta_plotting_3D/**/*.mp4
+/ritta_plotting_3D/**/*.webm
+/ritta_plotting_3D/**/*.h5
+/ritta_plotting_3D/**/*.hdf5
+/ritta_plotting_3D/**/*.csv
+/ritta_plotting_3D/**/*.tsv
+/ritta_plotting_3D/**/*.npz
+/ritta_plotting_3D/**/*.npy
+/ritta_plotting_3D/**/*.log
+/ritta_plotting_3D/**/slurm-*.out
+/ritta_plotting_3D/**/slurm-*.err
+/ritta_vortex_identification/**/*.png
+/ritta_vortex_identification/**/*.jpg
+/ritta_vortex_identification/**/*.jpeg
+/ritta_vortex_identification/**/*.svg
+/ritta_vortex_identification/**/*.pdf
+/ritta_vortex_identification/**/*.gif
+/ritta_vortex_identification/**/*.mp4
+/ritta_vortex_identification/**/*.webm
+/ritta_vortex_identification/**/*.h5
+/ritta_vortex_identification/**/*.hdf5
+/ritta_vortex_identification/**/*.csv
+/ritta_vortex_identification/**/*.tsv
+/ritta_vortex_identification/**/*.npz
+/ritta_vortex_identification/**/*.npy
+/ritta_vortex_identification/**/*.log
+/ritta_vortex_identification/**/slurm-*.out
+/ritta_vortex_identification/**/slurm-*.err

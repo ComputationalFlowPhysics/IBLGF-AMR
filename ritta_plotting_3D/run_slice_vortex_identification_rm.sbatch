@@ -97,7 +97,7 @@ python ritta_plotting_3D/slice_vortex_identification.py \
     --resume \
     "${case_args[@]}"
 
-python ritta_vortex_identification/plot_combined_time_series.py \
+python ritta_vortex_identification/visualization/plot_combined_time_series.py \
     "$output_dir/datasets.toml" \
     "$config" \
     --legend-by tau \

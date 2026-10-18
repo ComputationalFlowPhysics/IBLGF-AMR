@@ -1,7 +1,8 @@
 """Stack labeled beginning/middle/end preview rows into one PNG."""
 
-import argparse
 from pathlib import Path
+
+import argparse
 
 from PIL import Image, ImageDraw, ImageFont
 

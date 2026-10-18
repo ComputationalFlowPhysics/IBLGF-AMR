@@ -1,5 +1,29 @@
 # 3D plotting
 
+## Folder guide
+
+| Location | Purpose |
+| --- | --- |
+| `plot_3d.py`, `plot_circulation.py` | Main 3D rendering and circulation entry points |
+| `slice_vortex_identification.py`, `snapshot_plotting.py` | Slice analysis and shared plotting helpers |
+| `visualization/plot_resolution_comparison.py` | Combined resolution/formation-time comparisons |
+| `visualization/plot_slice_fit_gifs.py` | Diagnostic GIFs from completed slice fits |
+| `run_*.sh`, `run_*.sbatch` | Existing local and cluster launchers |
+| `tests/` | Unit and integration tests |
+| `outputs/` | Generated results (ignored by Git) |
+
+Specialized Python scripts now live in `visualization/`; use the updated
+commands below. Shell launcher paths, CLI options, and default output locations
+are unchanged. No analysis or rendering algorithms were changed by this move.
+
+Run the tests from the repository root with the analysis Python environment:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m unittest discover -s ritta_plotting_3D/tests -v
+```
+
+
 ## Q-criterion or vorticity GIF
 
 ```bash
@@ -169,7 +193,7 @@ To regenerate the combined plots from existing CSVs while omitting a bad run,
 call the plotting script directly:
 
 ```bash
-python ritta_plotting_3D/plot_resolution_comparison.py \
+python ritta_plotting_3D/visualization/plot_resolution_comparison.py \
     runs/ns_amr_lgf/formation_new --legend-by tau \
     --exclude-case tau_11p0
 ```
@@ -213,7 +237,7 @@ the h-maxima, region, fit, tracking, or circulation calculations:
 ```bash
 source ritta_vortex_identification/open_viewer_venv.sh
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-python ritta_plotting_3D/plot_slice_fit_gifs.py \
+python ritta_plotting_3D/visualization/plot_slice_fit_gifs.py \
     ritta_plotting_3D/outputs/formation_new_slice_vortex_identification \
     --workers 32 --stride 1 --resume \
     --cases tau_1p0 tau_3p0 tau_5p0 tau_7p0 tau_9p0

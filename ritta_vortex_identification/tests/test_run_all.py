@@ -1,10 +1,13 @@
 """Tests for the headless multi-run vortex-identification driver."""
 
 import sys
-import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
+import unittest
+
 
 from run_all import select_batch_cases
 

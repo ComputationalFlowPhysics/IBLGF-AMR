@@ -1,9 +1,14 @@
 """Compare selected-time vorticity fields from several tau-sweep runs."""
 
+# Keep core helpers importable when this script is run directly.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import math
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import matplotlib
@@ -315,7 +320,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).resolve().parent
+        default=Path(__file__).resolve().parents[1]
         / "outputs"
         / "paper_previews"
         / "tau_1_8_30_midpoint_vorticity_contours_horizontal.png",

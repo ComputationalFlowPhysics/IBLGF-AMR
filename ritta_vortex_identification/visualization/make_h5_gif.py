@@ -1,9 +1,14 @@
 """Render saved vortex-analysis HDF5 frames to PNG files and a GIF."""
 
+# Keep core helpers importable when this script is run directly.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import math
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 from typing import List, Optional
 
 import h5py

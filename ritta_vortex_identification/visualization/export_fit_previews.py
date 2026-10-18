@@ -1,7 +1,12 @@
 """Export beginning, middle, and end PNG previews for vortex-fit stages."""
 
-import argparse
+# Keep core helpers importable when this script is run directly.
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse
 from typing import List, Optional
 
 import h5py

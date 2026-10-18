@@ -1,7 +1,12 @@
 """Render raw IBLGF vorticity frames to PNG files and a looping GIF."""
 
-import argparse
+# Keep core helpers importable when this script is run directly.
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse
 
 import matplotlib
 matplotlib.use("Agg")

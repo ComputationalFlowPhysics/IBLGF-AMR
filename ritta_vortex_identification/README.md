@@ -1,5 +1,34 @@
 # vortex scripts
 
+## Folder guide
+
+| Location | Purpose |
+| --- | --- |
+| `01_find_hmaxima.py` through `05_plot_time_series.py` | Ordered analysis pipeline |
+| `run_all.py`, `run_vortex_fitting.sh` | Multi-run pipeline drivers |
+| `make_threshold_masks.py`, `plot_vorticity.py` | Threshold analysis and raw-field inspection |
+| `common.py`, `time_series_plotting.py`, `toml_compat.py` | Shared helpers |
+| `visualization/export_fit_previews.py`, `visualization/stack_combined_previews.py` | Fit previews and figure assembly |
+| `visualization/make_h5_gif.py`, `visualization/make_vorticity_gif.py` | Saved-fit and raw-vorticity animations |
+| `visualization/plot_combined_time_series.py`, `visualization/plot_circulation_breakpoints.py` | Multi-run histories and breakpoint plots |
+| `visualization/plot_tau_midpoint_vorticity.py` | Selected-time tau-sweep comparisons |
+| `configs/` | Editable analysis settings |
+| `tests/` | Unit and integration tests |
+| `outputs/` | Generated results (ignored by Git) |
+
+Optional visualization scripts now live in `visualization/`; use the updated
+commands below. Run them from this folder as before, adding `visualization/`
+to the script path. Arguments, config paths, and default output locations are
+unchanged. The numbered analysis stages stay at the top level.
+
+Run the tests from the repository root with the analysis Python environment:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m unittest discover -s ritta_vortex_identification/tests -v
+```
+
+
 Quick notes for running my standalone 2D `edge_aux` analysis.
 
 ## before running
@@ -44,7 +73,7 @@ original forcing-based rectangle is recovered at time zero.
 After Stage 3, export nine beginning/middle/end diagnostic PNGs with:
 
 ```bash
-python export_fit_previews.py RUN_FOLDER CONFIG_FILE
+python visualization/export_fit_previews.py RUN_FOLDER CONFIG_FILE
 ```
 
 The command chooses the earliest successful-fit frame, the successful frame
@@ -69,7 +98,7 @@ To make one labeled figure from several combined fit previews, repeat `--row`
 with each row label and PNG:
 
 ```bash
-python stack_combined_previews.py stacked.png \
+python visualization/stack_combined_previews.py stacked.png \
   --row "Re = 200" re_200_fits_combined.png \
   --row "Re = 1000" re_1000_fits_combined.png \
   --row "Re = 1800" re_1800_fits_combined.png
@@ -79,7 +108,7 @@ To compare only the midpoint vorticity fields from selected tau-sweep runs in
 one horizontal figure, read the original simulation output directly with:
 
 ```bash
-python plot_tau_midpoint_vorticity.py ../runs/ns_amr_lgf2D/tau_sweep configs/default.toml \
+python visualization/plot_tau_midpoint_vorticity.py ../runs/ns_amr_lgf2D/tau_sweep configs/default.toml \
   --taus 1 8 30 --workers 3 --color-limit 12 \
   --contour-magnitudes 0.35 1 2 4 8
 ```
@@ -107,7 +136,7 @@ Optional check before stage 1: `python plot_vorticity.py RUN_FOLDER CONFIG_FILE`
 Make a GIF of only the raw vorticity field, without running the vortex-identification stages:
 
 ```bash
-python make_vorticity_gif.py RUN_FOLDER CONFIG_FILE --stride 5
+python visualization/make_vorticity_gif.py RUN_FOLDER CONFIG_FILE --stride 5
 ```
 
 This saves the selected PNG frames and `vorticity.gif` under
@@ -173,7 +202,7 @@ created with `--no-preview`.
 Make PNG frames and a GIF from any saved vortex HDF5 file:
 
 ```bash
-python make_h5_gif.py H5_FILE STRIDE
+python visualization/make_h5_gif.py H5_FILE STRIDE
 ```
 
 This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`.
@@ -219,14 +248,14 @@ elsewhere.
 The same folder gets `datasets.toml`. Each `name` identifies its dataset, while combined-plot legends use the corresponding forcing-end time. Then run:
 
 ```bash
-python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
+python visualization/plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
 To make a second set of plots containing only selected forcing durations, pass
 the desired values with `--tau-values` and use a separate output folder:
 
 ```bash
-python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE \
+python visualization/plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE \
     --tau-values 1 3 5 7 9 11 20 45 \
     --normalized-zoom 0.6 1.0 0.5 0.9 \
     --output-dir outputs/pipeline_results/selected_tau
@@ -241,14 +270,14 @@ For a resolution sweep, label and order the curves by the copied simulation
 config's `domain.dx_base` value instead of forcing-end time:
 
 ```bash
-python plot_combined_time_series.py outputs/res_test_tau_20/datasets.toml CONFIG_FILE --legend-by dx-base
+python visualization/plot_combined_time_series.py outputs/res_test_tau_20/datasets.toml CONFIG_FILE --legend-by dx-base
 ```
 
 For a Reynolds-number sweep, read `Re` from each copied simulation config and
 order the legend by increasing Reynolds number:
 
 ```bash
-python plot_combined_time_series.py outputs/reynolds_sweep/datasets.toml CONFIG_FILE --legend-by reynolds
+python visualization/plot_combined_time_series.py outputs/reynolds_sweep/datasets.toml CONFIG_FILE --legend-by reynolds
 ```
 
 Add `--circulation-inset` to retain the full circulation history while showing
@@ -277,7 +306,7 @@ To fit the circulation slope-change time for every dataset and put all results
 on one figure:
 
 ```bash
-python plot_circulation_breakpoints.py outputs/pipeline_results/datasets.toml CONFIG_FILE
+python visualization/plot_circulation_breakpoints.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
 This starts each fit at that dataset's forcing-end time and iterates the

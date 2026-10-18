@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Combine 3D circulation and axial-center CSV files for a parameter sweep."""
 
+from pathlib import Path
+
 import argparse
 import csv
 import math
-from pathlib import Path
 
 
-SCRIPT_FOLDER = Path(__file__).resolve().parent
+SCRIPT_FOLDER = Path(__file__).resolve().parents[1]
 CSV_NAME = "leading_vortex_circulation.csv"
 
 

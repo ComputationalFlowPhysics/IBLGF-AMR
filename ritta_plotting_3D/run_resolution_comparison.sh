@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 analysis_script="${script_dir}/run_circulation_analysis.sh"
-comparison_script="${script_dir}/plot_resolution_comparison.py"
+comparison_script="${script_dir}/visualization/plot_resolution_comparison.py"
 
 usage() {
   cat <<EOF

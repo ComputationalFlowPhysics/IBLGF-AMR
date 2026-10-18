@@ -1,17 +1,21 @@
 """Integration tests for serial/parallel Gaussian fitting and circulation."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 
 import h5py
 import numpy as np
 
 
-SCRIPT_FOLDER = Path(__file__).resolve().parent
+SCRIPT_FOLDER = Path(__file__).resolve().parents[1]
 FIT_SCRIPT = SCRIPT_FOLDER / "03_fit_vortices.py"
 METRICS_SCRIPT = SCRIPT_FOLDER / "04_positive_vortex_metrics.py"
 

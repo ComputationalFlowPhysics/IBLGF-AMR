@@ -1,8 +1,13 @@
 """Plot circulation and x displacement from several final metrics CSV files."""
 
+# Keep core helpers importable when this script is run directly.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import math
-from pathlib import Path
 from typing import List, Union
 
 from common import load_config, simulation_parameter

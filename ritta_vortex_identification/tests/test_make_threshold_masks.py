@@ -1,11 +1,14 @@
 """Tests for retained h-maximum tracking."""
 
 import sys
-import tempfile
-import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
+import tempfile
+import unittest
+
 from make_threshold_masks import (
     all_pair_interactions,
     assign_extrema_tracks,

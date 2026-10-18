@@ -1,12 +1,15 @@
 """Unit tests for the ParaView-independent 3D plotting helpers."""
 
-import argparse
 import sys
-import tempfile
-import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
+import argparse
+import tempfile
+import unittest
+
 from plot_3d import (
     assigned_snapshots,
     frame_manifest_row,

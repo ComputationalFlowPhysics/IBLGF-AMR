@@ -1,17 +1,21 @@
 """Tests for upper-half circulation measured on a 3D meridional slice."""
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
 import os
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
 
 import h5py
 import numpy as np
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ritta_plotting_2D"))
 from upper_half_circulation import load_task_frame, measure_frame  # noqa: E402
 

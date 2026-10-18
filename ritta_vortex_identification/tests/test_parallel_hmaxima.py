@@ -1,17 +1,21 @@
 """Integration test for deterministic parallel h-maxima frame processing."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 
 import h5py
 import numpy as np
 
 
-SCRIPT = Path(__file__).with_name("make_threshold_masks.py")
+SCRIPT = Path(__file__).resolve().parents[1] / "make_threshold_masks.py"
 
 
 def write_frame(path: Path, omega: np.ndarray) -> None:

@@ -1,10 +1,13 @@
 """Tests for filtering combined 2D time-series datasets."""
 
 import sys
-import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
+import unittest
+
 
 from plot_combined_time_series import select_tau_datasets
 

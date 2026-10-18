@@ -1,14 +1,17 @@
 """Tests for direct AMR slice extraction used by 3D vortex identification."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
 import tempfile
 import unittest
-from pathlib import Path
-import sys
 
 import h5py
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import slice_vortex_identification as analysis
 
 

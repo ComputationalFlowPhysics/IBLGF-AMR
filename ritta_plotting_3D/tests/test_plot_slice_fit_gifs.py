@@ -1,13 +1,16 @@
 """Tests for the ParaView-independent 3D-slice fit GIF helpers."""
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
+
 import tempfile
 import unittest
-from pathlib import Path
 
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_slice_fit_gifs import axis_limits, save_gif, successful_records
 
 

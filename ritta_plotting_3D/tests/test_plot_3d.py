@@ -9,9 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visualization"))
 import argparse
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from plot_3d import (
     assigned_snapshots,
+    build_vorticity_threshold,
+    build_q_criterion_threshold,
+    parse_args,
     frame_manifest_row,
     output_paths,
     read_worker_rows,
@@ -23,6 +27,37 @@ from plot_3d import (
 
 
 class Plot3DHelperTests(unittest.TestCase):
+    def test_contour_cli_and_separate_default_output(self):
+        with patch.object(sys, "argv", ["plot_3d.py", "run", "--contour"]):
+            self.assertTrue(parse_args().contour)
+        original = output_paths(Path("run/output"), "vorticity")
+        contour = output_paths(Path("run/output"), "vorticity", contour=True)
+        self.assertNotEqual(original[0], contour[0])
+        self.assertNotEqual(original[2], contour[2])
+
+    def test_vorticity_contour_uses_requested_fraction(self):
+        simple = Mock()
+        surface, proxies = build_vorticity_threshold(simple, object(), 0.2, contour=True)
+        self.assertIs(surface, simple.Contour.return_value)
+        self.assertEqual(surface.ContourBy, ["POINTS", "Normalized Vorticity"])
+        self.assertEqual(surface.Isosurfaces, [0.2])
+        self.assertEqual(proxies, [surface, simple.PythonCalculator.return_value])
+        simple.Threshold.assert_not_called()
+
+    def test_threshold_remains_default(self):
+        simple = Mock()
+        surface, _ = build_vorticity_threshold(simple, object(), 0.2)
+        self.assertIs(surface, simple.Threshold.return_value)
+        self.assertEqual(surface.UpperThreshold, 0.2)
+        simple.Contour.assert_not_called()
+
+    def test_q_contour_preserves_threshold_cutoff(self):
+        simple = Mock()
+        threshold, _ = build_q_criterion_threshold(simple, object())
+        surface, _ = build_q_criterion_threshold(simple, object(), contour=True)
+        self.assertEqual(surface.Isosurfaces, [threshold.UpperThreshold])
+        self.assertEqual(surface.ContourBy, ["POINTS", "Q Criterion"])
+
     def test_threshold_fraction_bounds(self):
         self.assertEqual(threshold_fraction("0.02"), 0.02)
         for invalid_value in ("0", "-0.1", "1.1"):

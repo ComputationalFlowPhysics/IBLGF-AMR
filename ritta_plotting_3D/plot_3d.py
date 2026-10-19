@@ -5,7 +5,7 @@ Usage:
     pvpython plot_3d.py OUTPUT_FOLDER [STRIDE]
         [--field {q-criterion,vorticity}]
         [--vorticity-threshold-fraction FRACTION]
-        [--output-dir FOLDER] [--resume]
+        [--output-dir FOLDER] [--resume] [--contour]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. Generated files are saved
@@ -119,6 +119,11 @@ def parse_args():
         help="vortex diagnostic used for thresholding (default: q-criterion)",
     )
     parser.add_argument(
+        "--contour",
+        action="store_true",
+        help="render an interpolated isosurface at the cutoff instead of thresholded cells",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="reuse existing nonempty PNG frames instead of rendering them again",
@@ -215,13 +220,13 @@ def discover_snapshots(snapshot_folder, stride):
     return snapshots[::stride]
 
 
-def output_paths(snapshot_folder, field, output_dir=None):
+def output_paths(snapshot_folder, field, output_dir=None, contour=False):
     run_name = (
         snapshot_folder.parent.name
         if snapshot_folder.name == "output"
         else snapshot_folder.name
     )
-    field_name = field.replace("-", "")
+    field_name = field.replace("-", "") + ("_contour" if contour else "")
     output_folder = (
         output_dir.expanduser().resolve()
         if output_dir is not None
@@ -354,7 +359,7 @@ def build_vector_data(simple, point_data):
     return vorticity, [vorticity, velocity]
 
 
-def build_q_criterion_threshold(simple, vector_data):
+def build_q_criterion_threshold(simple, vector_data, contour=False):
     gradient = simple.Gradient(
         registrationName="VelocityGradient",
         Input=vector_data,
@@ -363,10 +368,11 @@ def build_q_criterion_threshold(simple, vector_data):
     gradient.ComputeQCriterion = 1
     gradient.QCriterionArrayName = "Q Criterion"
 
-    # Previous contour visualization:
-    # contour = simple.Contour(registrationName="QCriterionContour", Input=gradient)
-    # contour.ContourBy = ["POINTS", "Q Criterion"]
-    # contour.Isosurfaces = [1.5]
+    if contour:
+        surface = simple.Contour(registrationName="QCriterionContour", Input=gradient)
+        surface.ContourBy = ["POINTS", "Q Criterion"]
+        surface.Isosurfaces = [Q_CRITERION_THRESHOLD]
+        return surface, [surface, gradient]
 
     threshold = simple.Threshold(
         registrationName="QCriterionThreshold",
@@ -382,6 +388,7 @@ def build_vorticity_threshold(
     simple,
     vector_data,
     vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
+    contour=False,
 ):
     calculator = simple.PythonCalculator(
         registrationName="NormalizedVorticity",
@@ -390,13 +397,13 @@ def build_vorticity_threshold(
     calculator.Expression = "mag(Vorticity) / max(mag(Vorticity))"
     calculator.ArrayName = "Normalized Vorticity"
 
-    # Previous contour visualization:
-    # contour = simple.Contour(
-    #     registrationName="NormalizedVorticityContour",
-    #     Input=calculator,
-    # )
-    # contour.ContourBy = ["POINTS", "Normalized Vorticity"]
-    # contour.Isosurfaces = [VORTICITY_THRESHOLD_FRACTION]
+    if contour:
+        surface = simple.Contour(
+            registrationName="NormalizedVorticityContour", Input=calculator,
+        )
+        surface.ContourBy = ["POINTS", "Normalized Vorticity"]
+        surface.Isosurfaces = [vorticity_threshold_fraction]
+        return surface, [surface, calculator]
 
     threshold = simple.Threshold(
         registrationName="NormalizedVorticityThreshold",
@@ -415,6 +422,7 @@ def render_snapshot(
     field,
     vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
     show_domain_boundary=False,
+    contour=False,
 ):
     # Start every frame from a completely empty ParaView session. In
     # particular, do not reuse a reader or render view across snapshots.
@@ -464,20 +472,21 @@ def render_snapshot(
         )
 
     if field == "q-criterion":
-        threshold, field_proxies = build_q_criterion_threshold(simple, vector_data)
+        threshold, field_proxies = build_q_criterion_threshold(simple, vector_data, contour)
     else:
         threshold, field_proxies = build_vorticity_threshold(
             simple,
             vector_data,
             vorticity_threshold_fraction,
+            contour,
         )
     threshold.UpdatePipeline()
 
     threshold_points = threshold.GetDataInformation().GetNumberOfPoints()
     if threshold_points == 0:
         print(
-            f"Warning: {snapshot.name} has no points above the "
-            f"{field} threshold; rendering a blank frame.",
+            f"Warning: {snapshot.name} has no points in the selected "
+            f"{field} surface; rendering a blank frame.",
             flush=True,
         )
 
@@ -694,6 +703,7 @@ def render_assigned_frames(
                 args.field,
                 args.vorticity_threshold_fraction,
                 args.show_domain_boundary,
+                args.contour,
             )
         rows.append(
             frame_manifest_row(
@@ -758,6 +768,7 @@ def main():
             snapshot_folder,
             args.field,
             args.output_dir,
+            args.contour,
         )
         if args.worker_index >= args.worker_count:
             raise ValueError(

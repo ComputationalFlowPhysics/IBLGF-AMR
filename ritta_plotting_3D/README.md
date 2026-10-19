@@ -30,6 +30,22 @@ python -m unittest discover -s ritta_plotting_3D/tests -v
 ./ritta_plotting_3D/run_qcriterion_animation.sh RUN_FOLDER STRIDE --field q-criterion
 ```
 
+For an interpolated isosurface instead of the block-shaped thresholded cells,
+add `--contour`:
+
+```bash
+./ritta_plotting_3D/run_qcriterion_animation.sh RUN_FOLDER 1 \
+    --field vorticity --vorticity-threshold-fraction 0.2 --contour
+```
+
+This shows `|omega| / max(|omega|) = 0.2` for each snapshot. It interpolates
+between mesh points; it does not smooth or change the underlying simulation.
+The option also works with Q-criterion at its existing cutoff. Thresholded
+cells remain the default. Contour output names gain `_contour` automatically.
+When specifying `--output-dir`, choose a new folder when changing render mode
+so `--resume` does not reuse old threshold frames. Domain outlines remain off
+unless `--show-domain-boundary` is supplied.
+
 For a normalized-vorticity surface together with the current Chombo data-domain
 outline, use:
 

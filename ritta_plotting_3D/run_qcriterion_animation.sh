@@ -13,7 +13,7 @@ PVBATCH="${PARAVIEW_BIN_DIR}/pvbatch"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") RUN_FOLDER [STRIDE] [--field q-criterion|vorticity] [--vorticity-threshold-fraction FRACTION] [--show-domain-boundary] [--output-dir FOLDER] [--resume] [--workers N]
+  $(basename "$0") RUN_FOLDER [STRIDE] [--field q-criterion|vorticity] [--vorticity-threshold-fraction FRACTION] [--contour] [--show-domain-boundary] [--output-dir FOLDER] [--resume] [--workers N]
 
 Examples:
   $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21

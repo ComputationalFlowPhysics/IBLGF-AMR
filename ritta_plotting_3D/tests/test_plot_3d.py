@@ -16,6 +16,7 @@ from plot_3d import (
     build_vorticity_threshold,
     build_q_criterion_threshold,
     parse_args,
+    main,
     frame_manifest_row,
     output_paths,
     read_worker_rows,
@@ -27,6 +28,29 @@ from plot_3d import (
 
 
 class Plot3DHelperTests(unittest.TestCase):
+    def test_serial_cli_passes_contour_to_renderer(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            snapshots = root / "output"
+            snapshots.mkdir()
+            snapshot = snapshots / "flowTime_0.hdf5"
+            snapshot.touch()
+            argv = [
+                "plot_3d.py", str(snapshots), "1", "--field", "vorticity",
+                "--contour", "--vorticity-threshold-fraction", "0.2",
+                "--output-dir", str(root / "renders"),
+            ]
+            with patch.object(sys, "argv", argv), \
+                    patch("plot_3d.load_paraview") as load, \
+                    patch("plot_3d.render_snapshot", return_value=(10, 20)) as render, \
+                    patch("plot_3d.build_gif"):
+                self.assertEqual(main(), 0)
+            render.assert_called_once_with(
+                load.return_value, snapshot.resolve(),
+                (root / "renders" / "frames" / "flowTime_0.png").resolve(),
+                "vorticity", 0.2, False, True,
+            )
+
     def test_contour_cli_and_separate_default_output(self):
         with patch.object(sys, "argv", ["plot_3d.py", "run", "--contour"]):
             self.assertTrue(parse_args().contour)

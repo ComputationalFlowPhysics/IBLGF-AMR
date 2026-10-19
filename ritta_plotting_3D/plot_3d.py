@@ -676,6 +676,7 @@ def render_assigned_frames(
     simple = load_paraview() if needs_render else None
     rows = []
 
+    print(f"Render mode: {'contour' if args.contour else 'threshold'}", flush=True)
     print(
         f"Frame worker {args.worker_index + 1}/{args.worker_count}: "
         f"{len(assignments)} snapshots",
@@ -824,6 +825,7 @@ def main():
 
         print(f"Snapshot folder: {snapshot_folder}", flush=True)
         print(f"Field:           {args.field}", flush=True)
+        print(f"Render mode:     {'contour' if args.contour else 'threshold'}", flush=True)
         print(f"Snapshots used:  {len(snapshots)}", flush=True)
         print(f"Stride:          {args.stride}", flush=True)
         print(f"Resume:          {args.resume}", flush=True)
@@ -866,6 +868,7 @@ def main():
                         args.field,
                         args.vorticity_threshold_fraction,
                         args.show_domain_boundary,
+                        args.contour,
                     )
                 manifest_writer.writerow(
                     frame_manifest_row(

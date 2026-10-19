@@ -38,8 +38,10 @@ b_f_phi_m=(0.0,1.5707963267948966);
 Omitting all three settings, or setting amplitudes to zero, recovers the
 original axisymmetric forcing. The factor is not clipped: choosing
 `sum(abs(epsilon_m)) <= 1` is sufficient to keep it nonnegative.
-The sample is copied from `config3D_test` with only these settings added;
+The sample is copied from `config3D_test` with the Fourier settings added and checkpoint writing enabled;
 it retains the original grid and 4000 steps, so it is not a small smoke test.
+The resumable batch runner requires `write_restart=true` and
+`use_restart=false` for a fresh run; both sample configs use these settings.
 
 ## ACCESS / Bridges-2 submission
 

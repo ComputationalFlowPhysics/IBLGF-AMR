@@ -13,6 +13,12 @@
 #ifndef xlb_framework_h5_file_hpp
 #define xlb_framework_h5_file_hpp
 
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <thread>
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -211,10 +217,81 @@ class hdf5_file
         plist_id = H5Pcreate(H5P_FILE_ACCESS);
         H5Pset_fapl_mpio(plist_id, world, mpiInfo);
         if (!default_open)
+        {
+            // collective (MPI-IO) open: every rank must call it once, no retry
             file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, plist_id);
+            if (file_id < 0) report_open_failure(_filename);
+        }
         else
-            file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+        {
+            // A file just written by other nodes can briefly be invisible to
+            // this node's Lustre client (ENOENT), so retry before giving up
+            const int max_attempts = 10;
+            for (int attempt = 1; attempt <= max_attempts; ++attempt)
+            {
+                file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+                if (file_id >= 0)
+                {
+                    if (attempt > 1)
+                        std::cerr << "[rank " << world.rank() << "] opened " << _filename
+                                  << " on attempt " << attempt << std::endl;
+                    break;
+                }
+                report_open_failure(_filename);
+                if (attempt < max_attempts)
+                {
+                    refresh_directory(_filename);
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            }
+        }
         HDF5_CHECK_ERROR(file_id, "hdf5: could not open file")
+    }
+
+    // List the file's directory so this node's client looks it up again
+    static void refresh_directory(const std::string& _filename)
+    {
+        const auto  slash = _filename.find_last_of('/');
+        std::string dir = slash == std::string::npos ? "." : _filename.substr(0, slash);
+        if (dir.empty()) dir = "/";
+        if (DIR* d = opendir(dir.c_str()))
+        {
+            while (readdir(d) != nullptr) {}
+            closedir(d);
+        }
+        struct stat st;
+        stat(_filename.c_str(), &st);
+    }
+
+    // Diagnostic: why did this rank fail to open the file? Lists the HDF5
+    // files this process still has open and prints the HDF5 error stack
+    // (auto-printing is switched off by H5Eset_auto1 in create_group).
+    void report_open_failure(const std::string& _filename) const
+    {
+        const int                err = errno;
+        boost::mpi::communicator world;
+        const std::string        tag = "[rank " + std::to_string(world.rank()) + "] ";
+        const auto nfiles = H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_FILE);
+        std::cerr << tag << "H5Fopen failed for " << _filename << ", errno " << err
+                  << " (" << std::strerror(err) << "), HDF5 files open in this process: "
+                  << nfiles << std::endl;
+        if (nfiles > 0)
+        {
+            std::vector<hid_t> ids(nfiles);
+            const auto n = H5Fget_obj_ids(H5F_OBJ_ALL, H5F_OBJ_FILE, nfiles, ids.data());
+            for (ssize_t i = 0; i < n; ++i)
+            {
+                char     name[1024] = "";
+                unsigned intent = 0;
+                H5Fget_name(ids[i], name, sizeof(name));
+                H5Fget_intent(ids[i], &intent);
+                std::cerr << tag << "  still open: " << name << " ("
+                          << ((intent & H5F_ACC_RDWR) ? "RDWR" : "RDONLY")
+                          << "), objects open in it: "
+                          << H5Fget_obj_count(ids[i], H5F_OBJ_ALL) << std::endl;
+            }
+        }
+        H5Eprint2(H5E_DEFAULT, stderr);
     }
 
     hid_type open_dataset(hid_t _loc_id, std::string _name)

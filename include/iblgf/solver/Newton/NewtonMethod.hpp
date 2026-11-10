@@ -88,11 +88,13 @@ class NewtonIteration
     using p_type = typename Setup::p_type;
     using fu_i_type = typename Setup::fu_i_type; //store first block of f(x) in Newton method
     using fp_i_type = typename Setup::fp_i_type; //store second block of f(x) in Newton method
+    using du_i_type = typename Setup::du_i_type; //store first block of the Newton update
+    using dp_i_type = typename Setup::dp_i_type; //store second block of the Newton update
     using stream_f_type = typename Setup::stream_f_type;
     //using p_type = typename Setup::p_type;
     //using q_i_type = typename Setup::q_i_type;
     //using r_i_type = typename Setup::r_i_type;
-    //using cell_aux2_type = typename Setup::cell_aux2_type;
+    using cell_aux2_type = typename Setup::cell_aux2_type;
     using g_i_type = typename Setup::g_i_type;
     //using d_i_type = typename Setup::d_i_type;
 
@@ -123,7 +125,7 @@ class NewtonIteration
     using idx_w_g_type = typename Setup::idx_w_g_type;
 
     //variable fields for conjugate gradient
-    /*using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
+    using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
     using conj_r_cell_aux_type = typename Setup::conj_r_cell_aux_type;
     using conj_p_face_aux_type = typename Setup::conj_p_face_aux_type;
     using conj_p_cell_aux_type = typename Setup::conj_p_cell_aux_type;
@@ -137,13 +139,13 @@ class NewtonIteration
     //using conj_As_face_aux_type = typename Setup::conj_As_face_aux_type;
     //using conj_As_cell_aux_type = typename Setup::conj_As_cell_aux_type;
     using conj_s_face_aux_type = typename Setup::conj_s_face_aux_type;
-    using conj_s_cell_aux_type = typename Setup::conj_s_cell_aux_type;*/
+    using conj_s_cell_aux_type = typename Setup::conj_s_cell_aux_type;
 
     //fields for evaluating Jacobian
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
-    //using face_aux2_type = typename Setup::face_aux2_type;
+    using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
     //using u_i_type = typename Setup::u_i_type;
 
@@ -889,23 +891,26 @@ class NewtonIteration
         base_mesh_update_ = false;
         pcout << "pad u      in " << t_pad.count() << std::endl;
 
-        //clean<R_1_type>();
-        //copy<u_type, u_i_type>();
-        auto forcing_df = forcing_old;
         NewtonRHS<u_type, p_type, fu_i_type, fp_i_type>(forcing_old, forcing_tmp);
-        //Solve_Jacobian<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
-        //BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
-        //add<nonlinear_tmp1_type, R_1_type>();
-        //AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
 
         float_type res = this->template dotAll<fu_i_type, fp_i_type, fu_i_type, fp_i_type>(forcing_tmp, forcing_tmp);
         float_type f2 = this->template dotAll<u_type, p_type, u_type, p_type>(forcing_old, forcing_old);
         if (comm_.rank()==1)
-            std::cout<< "Newton residue square = "<< res/f2<<std::endl;;
+            std::cout<< "Newton residue square = "<< res/f2<<std::endl;
         if (sqrt(res/f2)<Newton_threshold_)
             return;
-        //add<nonlinear_tmp1_type, R_1_type>(-1.0);
-        //Solve_Jacobian();
+
+        // Solve J * (du, dp, dforce) = -R for the Newton update, matrix-free
+        // (BCG_Stab uses only the operators from NewtonRHS's Jacobian), then
+        // apply it: x_{k+1} = x_k - J^{-1} R(x_k)
+        clean<du_i_type>();
+        clean<dp_i_type>();
+        real_coordinate_type tmp_coord(0.0);
+        force_type forcing_df(domain_->ib().size(), tmp_coord);
+
+        BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
+
+        AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
     }
 
 
@@ -1107,6 +1112,73 @@ class NewtonIteration
 
     }*/
 
+    // --- 3D correction-cell active-point marking (M1) -----------------------
+    // 3D analog of the hand-coded 2D `tmp[N][N]` / 9-neighbour marking scattered
+    // through Assigning_idx: for each real-leaf Moore neighbour of the
+    // correction octant `it`, mark the 1-deep boundary face/edge/corner of the
+    // N^3 interior that faces it. Neighbour index ni decodes as
+    // dx = ni%3-1, dy = (ni/3)%3-1, dz = ni/9-1 (BlockIterator is column-major
+    // -> first axis fastest). only_low restricts to dx,dy,dz <= 0 neighbours
+    // (edge-field / vorticity variant, which numbers only the low-side edge).
+    // face_depth: how many cells deep a *face* neighbour (exactly one nonzero
+    // axis) marks; edge/corner neighbours always mark 1-deep. Matches the 2D
+    // sites (some use 1, some 2). TODO(M2): verify the depth against the
+    // assembled-L-vs-Operator::laplace check.
+    template<class OctIt>
+    void mark_corr_active_3d(OctIt& it, int N, std::vector<char>& tmp,
+        bool only_low = false, int face_depth = 1)
+    {
+        tmp.assign((std::size_t)N * N * N, 0);
+        for (int ni = 0; ni < (int)it->num_neighbors(); ++ni)
+        {
+            auto it2 = it->neighbor(ni);
+            if (!it2 || !it2->is_leaf() || it2->is_correction()) continue;
+            const int dx = ni % 3 - 1;
+            const int dy = (ni / 3) % 3 - 1;
+            const int dz = ni / 9 - 1;
+            if (dx == 0 && dy == 0 && dz == 0) continue;
+            if (only_low && (dx > 0 || dy > 0 || dz > 0)) continue;
+            const int nnz = (dx != 0) + (dy != 0) + (dz != 0);
+            const int dep = (nnz == 1) ? face_depth : 1;
+            for (int a = 0; a < N; ++a)
+            {
+                if ((dx == -1 && a >= dep) || (dx == 1 && a < N - dep)) continue;
+                for (int b = 0; b < N; ++b)
+                {
+                    if ((dy == -1 && b >= dep) || (dy == 1 && b < N - dep))
+                        continue;
+                    for (int c = 0; c < N; ++c)
+                    {
+                        if ((dz == -1 && c >= dep) || (dz == 1 && c < N - dep))
+                            continue;
+                        tmp[((std::size_t)a * N + b) * N + c] = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Write the numbered / -1 index into a 3D linalg_data field for one
+    // correction octant, given the active-point mask (or nullptr => all -1).
+    template<class LinData>
+    void write_corr_idx_3d(LinData& lin_data, int N, const std::vector<char>* tmp,
+        int& counter)
+    {
+        for (int a = 0; a < N; ++a)
+            for (int b = 0; b < N; ++b)
+                for (int c = 0; c < N; ++c)
+                {
+                    if (tmp && (*tmp)[((std::size_t)a * N + b) * N + c])
+                    {
+                        counter++;
+                        view(lin_data, a + 1, b + 1, c + 1) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }
+                    else
+                        view(lin_data, a + 1, b + 1, c + 1) = -1;
+                }
+    }
+
     void Assigning_idx() {
         //currently only implemented for uniform grid with no LGF yet
         boost::mpi::communicator world;
@@ -1158,6 +1230,21 @@ class NewtonIteration
                 {
                     //only setting the leaf points that is next to the leaf to be active
                     int  N = it->data().descriptor().extent()[0];
+                  if constexpr (Dim == 3)
+                  {
+                    std::vector<char> tmp3;
+                    mark_corr_active_3d(it, N, tmp3);
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_u_type::tag(), field_idx)
+                                .linalg_data();
+                        write_corr_idx_3d(lin_data, N, &tmp3, counter);
+                    }
+                  }
+                  else
+                  {
                     bool tmp[N][N] = {false};
                     for (int i = 0; i < N; i++) {
                             for (int j = 0; j < N; j++) {
@@ -1230,11 +1317,27 @@ class NewtonIteration
                             }
                         }
                     }
+                  }
                 }
                 else //if (it->is_correction())
                 {
                     //only setting the points that is next to the leaf to be active
                     int  N = it->data().descriptor().extent()[0];
+                  if constexpr (Dim == 3)
+                  {
+                    std::vector<char> tmp3;
+                    mark_corr_active_3d(it, N, tmp3, false, 2);
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_u_type::tag(), field_idx)
+                                .linalg_data();
+                        write_corr_idx_3d(lin_data, N, &tmp3, counter);
+                    }
+                  }
+                  else
+                  {
                     bool tmp[N][N] = {false};
                     for (int i = 0; i < N; i++) {
                             for (int j = 0; j < N; j++) {
@@ -1311,6 +1414,7 @@ class NewtonIteration
                             }
                         }
                     }
+                  }
                     //need this to compute the edge values
                     /*for (std::size_t field_idx = 0;
                          field_idx < idx_u_type::nFields(); ++field_idx)
@@ -1339,6 +1443,8 @@ class NewtonIteration
                 //if (it->is_correction()) continue;
             }
         }
+
+        blk_u_end_ = counter; // velocity DOF block ends here
 
         if (!testing_u_lap_only)
         {
@@ -1373,6 +1479,21 @@ class NewtonIteration
                         }*/
 
                         int  N = it->data().descriptor().extent()[0];
+                      if constexpr (Dim == 3)
+                      {
+                        // 2D marking is fully commented out here -> no pressure
+                        // DOFs on these cells, just write -1.
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_p_type::tag(), field_idx)
+                                    .linalg_data();
+                            write_corr_idx_3d(lin_data, N, nullptr, counter);
+                        }
+                      }
+                      else
+                      {
                         bool tmp[N][N] = {false};
                         for (int i = 0; i < N; i++) {
                             for (int j = 0; j < N; j++) {
@@ -1450,11 +1571,27 @@ class NewtonIteration
                                 }
                             }
                         }
+                      }
                     }
                     else if (!it->is_leaf())
                     {
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
+                      if constexpr (Dim == 3)
+                      {
+                        std::vector<char> tmp3;
+                        mark_corr_active_3d(it, N, tmp3);
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_p_type::tag(), field_idx)
+                                    .linalg_data();
+                            write_corr_idx_3d(lin_data, N, &tmp3, counter);
+                        }
+                      }
+                      else
+                      {
                         bool tmp[N][N] = {false};
                         for (int i = 0; i < N; i++) {
                             for (int j = 0; j < N; j++) {
@@ -1532,6 +1669,7 @@ class NewtonIteration
                                 }
                             }
                         }
+                      }
                     }
                     else
                     {
@@ -1548,6 +1686,8 @@ class NewtonIteration
                 }
             }
         }
+
+        blk_p_end_ = counter; // pressure DOF block ends here
 
         if (!no_vort_idx)
         {
@@ -1731,6 +1871,23 @@ class NewtonIteration
                     {
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
+                      if constexpr (Dim == 3)
+                      {
+                        // vorticity is edge-centred: only the low-side edge is
+                        // numbered (2D marks just i=0,1,3).
+                        std::vector<char> tmp3;
+                        mark_corr_active_3d(it, N, tmp3, /*only_low=*/true);
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_w_type::tag(), field_idx)
+                                    .linalg_data();
+                            write_corr_idx_3d(lin_data, N, &tmp3, counter);
+                        }
+                      }
+                      else
+                      {
                         bool tmp[N][N] = {false};
                         for (int i = 0; i < N; i++) {
                             for (int j = 0; j < N; j++) {
@@ -1787,6 +1944,7 @@ class NewtonIteration
                                 }
                             }
                         }
+                      }
                     }
                     else {
                         for (std::size_t field_idx = 0;
@@ -1801,6 +1959,8 @@ class NewtonIteration
                     }
                 }
             }
+
+            blk_wf_end_ = counter; // fine-grid vorticity block ends here
 
             for (int l = base_level - 1; l >= 0; l--)
             {
@@ -1818,19 +1978,35 @@ class NewtonIteration
                         auto& lin_data =
                             it->data_r(idx_w_type::tag(), field_idx)
                                 .linalg_data();
-                        for (int i = 0; i < (N + 2); i++)
+                        if constexpr (Dim == 3)
                         {
-                            for (int j = 0; j < (N + 2); j++)
-                            {
-                                counter++;
-                                view(lin_data, i, j) =
-                                    static_cast<float_type>(counter) + 0.5;
-                            }
+                            for (int i = 0; i < (N + 2); i++)
+                                for (int j = 0; j < (N + 2); j++)
+                                    for (int k = 0; k < (N + 2); k++)
+                                    {
+                                        counter++;
+                                        view(lin_data, i, j, k) =
+                                            static_cast<float_type>(counter)
+                                            + 0.5;
+                                    }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < (N + 2); i++)
+                                for (int j = 0; j < (N + 2); j++)
+                                {
+                                    counter++;
+                                    view(lin_data, i, j) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
                         }
                     }
                 }
             }
         }
+
+        if (blk_wf_end_ == 0) blk_wf_end_ = counter; // no_vort_idx path
+        blk_wc_end_ = counter; // coarse (FMM) vorticity block ends here
 
         for (std::size_t i=0; i<forcing_idx.size(); ++i)
         {
@@ -1845,8 +2021,9 @@ class NewtonIteration
             }
         }
         max_local_idx = counter;
+        blk_f_end_ = counter; // end of the IB-force block == max_local_idx
         domain_->client_communicator().barrier();
-        
+
         if (world.rank() != 0)                  world.recv(world.rank()-1, world.rank() - 1, max_idx_from_prev_prc);
         if (world.rank() != (world.size() - 1)) world.send(world.rank()+1, world.rank(), (counter + max_idx_from_prev_prc));
         for (int i = 1; i < world.size();i++) {
@@ -2095,8 +2272,12 @@ class NewtonIteration
                             n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
                         int glo_p_idx_01 =
                             n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        bool corner = (glo_p_idx_10 < 0 && glo_p_idx_01 < 0);
+                        if constexpr (Dim == 3)
+                            corner = corner &&
+                                (n.at_offset(idx_p_g_type::tag(), 0, 0, 1) < 0);
 
-                        if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0)
+                        if (corner)
                         {
                             //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
                             
@@ -3053,8 +3234,27 @@ class NewtonIteration
         int tot_dim_tmp = max_local_idx + max_idx_from_prev_prc;
         boost::mpi::broadcast(world, tot_dim_tmp, (world.size()-1));
         return tot_dim_tmp;
-        
+
     }
+
+    // Accessors for an assembled-Newton driver (tests/BaseFlow2D): the
+    // p_set_zero pin. The assembled Div block replaces the pinned cell's
+    // divergence row with [1] on p_pin (=> Jac row says dp_pin = R_p,pin),
+    // but NewtonRHS writes R_p,pin = -div u|_pin, not -(p_pin - 0). The driver
+    // patches b_loc[pin] = -x_old[pin] to make the pin row consistent.
+    bool is_p_set_zero() const noexcept { return p_set_zero; }
+    int  pin_global_idx() const noexcept { return set_zero_idx; } // 1-based
+    float_type get_curl_factor() const noexcept { return Curl_factor; }
+
+    // Setters for drivers that run an assembled Newton solve (e.g.
+    // tests/BaseFlow2D) instead of time_march.
+    // set_stage_time: construction_DN_u reads T_stage_ for the frame velocity
+    //   time argument; without time_march it is otherwise uninitialized
+    //   (benign only for a time-independent frame_vel -- make it deterministic).
+    // set_Re: for Reynolds-number continuation; Re_ is baked into the assembled
+    //   L block at construct_Jac_p() time, so re-call that after changing it.
+    void set_stage_time(float_type t) noexcept { T_ = t; T_stage_ = t; }
+    void set_Re(float_type r) noexcept { Re_ = r; }
 
 
     template<class U_old>
@@ -3254,25 +3454,38 @@ class NewtonIteration
                         }
                         //velocity formulation
                         int cur_idx = n(idx_u_type::tag(), field_idx);
+                        const float_type h2 = dx_level * dx_level;
+                      if constexpr (Dim == 3)
+                      {
+                        // 7-point Laplacian (cf. Operator::laplace dim==3):
+                        // -6/h^2 centre + 1/h^2 * 6 neighbours.
+                        L.add_element(cur_idx,
+                            n(idx_u_g_type::tag(), field_idx), -6.0 / h2);
+                        const int off[6][3] = {{0, 0, 1}, {0, 0, -1},
+                            {0, 1, 0}, {0, -1, 0}, {1, 0, 0}, {-1, 0, 0}};
+                        for (auto& o : off)
+                            L.add_element(cur_idx,
+                                n.at_offset(idx_u_g_type::tag(), o[0], o[1],
+                                    o[2], field_idx),
+                                1.0 / h2);
+                      }
+                      else
+                      {
                         int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            -4.0 / dx_level / dx_level);
+                        L.add_element(cur_idx, glo_idx, -4.0 / h2);
                         glo_idx =
                             n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
+                        L.add_element(cur_idx, glo_idx, 1.0 / h2);
                         glo_idx =
                             n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
+                        L.add_element(cur_idx, glo_idx, 1.0 / h2);
                         glo_idx =
                             n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
+                        L.add_element(cur_idx, glo_idx, 1.0 / h2);
                         glo_idx =
                             n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
+                        L.add_element(cur_idx, glo_idx, 1.0 / h2);
+                      }
 
                         //vorticity formulation L = -C^TC = -C^Tw (since divergence free)
                         /*int cur_idx = n(idx_u_type::tag(), field_idx);
@@ -3305,10 +3518,20 @@ class NewtonIteration
 
         //iterate to revise bc at different refinement level
 
+      if constexpr (Dim == 3)
+      {
+        // M2: 3D uniform grid only -- the AMR / multigrid BC helpers
+        // (construct_flux_BC / construct_upward_BC_intrp / construct_interpolation)
+        // are 2D-stencil and are ported in M11. On nLevels=0 they are not
+        // exercised anyway.
+        L.scale_entries(1.0 / Re_);
+      }
+      else
+      {
         if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(L);
         L.scale_entries(1.0/Re_);
 
-        
+
 
         this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(L);
 
@@ -3333,6 +3556,7 @@ class NewtonIteration
         if (world.rank() == 1) {
             std::cout << "finished constructing the w BC of laplacian" << std::endl;
         }
+      }
 
         
         /*if (domain_->is_client())
@@ -3624,6 +3848,66 @@ class NewtonIteration
 
                 //(p_idx_w <= 0 || p_idx_e <=0)
 
+              if constexpr (Dim == 3)
+              {
+                // M6 pass 1: d/du[ (curl du) x U_old ] -- chain rule through
+                // the (verified, M4) Curl stencil, weighted by the base-flow
+                // face averages from Operator::nonlinear's dim==3 branch
+                // (cyclic in c; a=(c+1)%3, b=(c+2)%3):
+                //   n(dest,c) = 0.25*( +edge(0,a)*(face(0,b)+face(-e_c,b))
+                //                      +edge(e_b,a)*(face(e_b,b)+face(e_b-e_c,b))
+                //                      -edge(0,b)*(face(0,a)+face(-e_c,a))
+                //                      -edge(e_a,b)*(face(e_a,a)+face(e_a-e_c,a)) )
+                // TODO(M6 follow-up): boundary gating (2D's p_idx_w/e/n/s
+                // near-edge skip) not yet ported for 3D -- fine on interior.
+                for (int c = 0; c < 3; ++c)
+                {
+                    const int a = (c + 1) % 3, b = (c + 2) % 3;
+                    int cur_idx = n(idx_u_type::tag(), c);
+                    int e_c[3] = {0, 0, 0}; e_c[c] = 1;
+                    int e_a[3] = {0, 0, 0}; e_a[a] = 1;
+                    int e_b[3] = {0, 0, 0}; e_b[b] = 1;
+
+                    auto avg = [&](int comp, int ox, int oy, int oz) {
+                        return 0.25 *
+                               (n.at_offset(U_old::tag(), ox, oy, oz, comp) +
+                                   n.at_offset(U_old::tag(), ox - e_c[0],
+                                       oy - e_c[1], oz - e_c[2], comp));
+                    };
+                    const float_type A_b0 = avg(b, 0, 0, 0);
+                    const float_type A_b1 = avg(b, e_b[0], e_b[1], e_b[2]);
+                    const float_type A_a0 = avg(a, 0, 0, 0);
+                    const float_type A_a1 = avg(a, e_a[0], e_a[1], e_a[2]);
+
+                    // d/du of w_comp(node+offset), via the Curl stencil
+                    // (comp: a2=(comp+1)%3, b2=(comp+2)%3).
+                    auto add_curl_terms = [&](int comp, int ox, int oy,
+                                               int oz, float_type coeff) {
+                        const int a2 = (comp + 1) % 3, b2 = (comp + 2) % 3;
+                        int ea2[3] = {0, 0, 0}; ea2[a2] = 1;
+                        int eb2[3] = {0, 0, 0}; eb2[b2] = 1;
+                        auto O = [&](int dxo, int dyo, int dzo, int f) {
+                            return n.at_offset(
+                                idx_u_g_type::tag(), dxo, dyo, dzo, f);
+                        };
+                        DN.add_element(cur_idx, O(ox, oy, oz, b2), coeff / dx);
+                        DN.add_element(cur_idx,
+                            O(ox - ea2[0], oy - ea2[1], oz - ea2[2], b2),
+                            -coeff / dx);
+                        DN.add_element(
+                            cur_idx, O(ox, oy, oz, a2), -coeff / dx);
+                        DN.add_element(cur_idx,
+                            O(ox - eb2[0], oy - eb2[1], oz - eb2[2], a2),
+                            coeff / dx);
+                    };
+                    add_curl_terms(a, 0, 0, 0, A_b0);
+                    add_curl_terms(a, e_b[0], e_b[1], e_b[2], A_b1);
+                    add_curl_terms(b, 0, 0, 0, -A_a0);
+                    add_curl_terms(b, e_a[0], e_a[1], e_a[2], -A_a1);
+                }
+              }
+              else
+              {
                 if (p_set_zero) {
 
                 if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
@@ -3701,6 +3985,7 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
                 //}
                 }
+              } // else (Dim != 3)
 
                 /*DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
                 DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
@@ -3726,8 +4011,58 @@ class NewtonIteration
 
             for (auto& n : it->data())
             {
-                
-                
+              if constexpr (Dim == 3)
+              {
+                // M6 pass 2: d/du[ omega_bar x du ], omega_bar = edge_aux =
+                // curl(U_old) (precomputed above). Cyclic in c; a=(c+1)%3,
+                // b=(c+2)%3:
+                //   n(dest,c) += 0.25*om_a0*(face(0,b)+face(-e_c,b))
+                //              + 0.25*om_a1*(face(e_b,b)+face(e_b-e_c,b))
+                //              - 0.25*om_b0*(face(0,a)+face(-e_c,a))
+                //              - 0.25*om_b1*(face(e_a,a)+face(e_a-e_c,a))
+                for (int c = 0; c < 3; ++c)
+                {
+                    const int a = (c + 1) % 3, b = (c + 2) % 3;
+                    int cur_idx = n(idx_u_type::tag(), c);
+                    int e_c[3] = {0, 0, 0}; e_c[c] = 1;
+                    int e_a[3] = {0, 0, 0}; e_a[a] = 1;
+                    int e_b[3] = {0, 0, 0}; e_b[b] = 1;
+
+                    const float_type om_a0 =
+                        n.at_offset(edge_aux_type::tag(), 0, 0, 0, a);
+                    const float_type om_a1 = n.at_offset(
+                        edge_aux_type::tag(), e_b[0], e_b[1], e_b[2], a);
+                    const float_type om_b0 =
+                        n.at_offset(edge_aux_type::tag(), 0, 0, 0, b);
+                    const float_type om_b1 = n.at_offset(
+                        edge_aux_type::tag(), e_a[0], e_a[1], e_a[2], b);
+
+                    auto O = [&](int ox, int oy, int oz, int f) {
+                        return n.at_offset(idx_u_g_type::tag(), ox, oy, oz, f);
+                    };
+                    DN.add_element(cur_idx, O(0, 0, 0, b), 0.25 * om_a0);
+                    DN.add_element(cur_idx,
+                        O(-e_c[0], -e_c[1], -e_c[2], b), 0.25 * om_a0);
+                    DN.add_element(cur_idx, O(e_b[0], e_b[1], e_b[2], b),
+                        0.25 * om_a1);
+                    DN.add_element(cur_idx,
+                        O(e_b[0] - e_c[0], e_b[1] - e_c[1], e_b[2] - e_c[2],
+                            b),
+                        0.25 * om_a1);
+
+                    DN.add_element(cur_idx, O(0, 0, 0, a), -0.25 * om_b0);
+                    DN.add_element(cur_idx,
+                        O(-e_c[0], -e_c[1], -e_c[2], a), -0.25 * om_b0);
+                    DN.add_element(cur_idx, O(e_a[0], e_a[1], e_a[2], a),
+                        -0.25 * om_b1);
+                    DN.add_element(cur_idx,
+                        O(e_a[0] - e_c[0], e_a[1] - e_c[1], e_a[2] - e_c[2],
+                            a),
+                        -0.25 * om_b1);
+                }
+              }
+              else
+              {
                 int cur_idx_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_1 = n(idx_u_type::tag(), 1);
 
@@ -3779,6 +4114,7 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
                 DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
                 }
+              }
             }
         }
         }
@@ -3841,6 +4177,25 @@ class NewtonIteration
                 {
                     for (auto& n : it->data())
                     {
+                      if constexpr (Dim == 3)
+                      {
+                        // grad p [d] = (p - p(-d)) / dx  (cf. Operator::gradient)
+                        int glo_idx_0 = n(idx_p_g_type::tag(), 0);
+                        const int off[3][3] = {
+                            {-1, 0, 0}, {0, -1, 0}, {0, 0, -1}};
+                        for (int d = 0; d < 3; ++d)
+                        {
+                            int cur_idx = n(idx_u_type::tag(), d);
+                            int glo_idx_m =
+                                n.at_offset(idx_p_g_type::tag(), off[d][0],
+                                    off[d][1], off[d][2], 0);
+                            if (p_set_zero && glo_idx_m <= 0) continue;
+                            Grad.add_element(cur_idx, glo_idx_0, 1.0 / dx_level);
+                            Grad.add_element(cur_idx, glo_idx_m, -1.0 / dx_level);
+                        }
+                      }
+                      else
+                      {
                         int cur_idx_0 = n(idx_u_type::tag(), 0);
                         int cur_idx_1 = n(idx_u_type::tag(), 1);
 
@@ -3879,6 +4234,7 @@ class NewtonIteration
                             Grad.add_element(cur_idx_1, glo_idx_01,
                                 -1.0 / dx_level);
                         }
+                      }
                     }
                 }
             }
@@ -3976,7 +4332,24 @@ class NewtonIteration
                             continue;
                         }
 
-                        
+                      if constexpr (Dim == 3)
+                      {
+                        // div u = (u0(+x)-u0 + u1(+y)-u1 + u2(+z)-u2) / dx
+                        // (cf. Operator::divergence dim==3)
+                        for (int d = 0; d < 3; ++d)
+                        {
+                            int off[3] = {0, 0, 0};
+                            off[d] = 1;
+                            Div.add_element(cur_idx,
+                                n(idx_u_g_type::tag(), d), -1.0 / dx_level);
+                            Div.add_element(cur_idx,
+                                n.at_offset(idx_u_g_type::tag(), off[0],
+                                    off[1], off[2], d),
+                                1.0 / dx_level);
+                        }
+                      }
+                      else
+                      {
                         int glo_idx_0 = n(idx_u_g_type::tag(), 0);
                         int glo_idx_1 = n(idx_u_g_type::tag(), 1);
 
@@ -3988,6 +4361,7 @@ class NewtonIteration
 
                         glo_idx_1 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
                         Div.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
+                      }
                     }
                 }
             }
@@ -4034,6 +4408,34 @@ class NewtonIteration
                 if (!it->is_leaf() && !it->is_correction()) continue;
                 for (auto& n : it->data())
                 {
+                  if constexpr (Dim == 3)
+                  {
+                    // w - curl(u) = 0, cyclic in (x,y,z) (cf. Operator::curl
+                    // dim==3): w_c = u_b - u_b(-1 in dir a) - u_a + u_a(-1 in
+                    // dir b), a=(c+1)%3, b=(c+2)%3.
+                    for (int c = 0; c < 3; ++c)
+                    {
+                        int cur_idx = n(idx_w_type::tag(), c);
+                        if (cur_idx < 0) continue;
+                        int glo_idx = n(idx_w_g_type::tag(), c);
+                        const int a = (c + 1) % 3, b = (c + 2) % 3;
+                        int off_a[3] = {0, 0, 0}; off_a[a] = -1;
+                        int off_b[3] = {0, 0, 0}; off_b[b] = -1;
+                        int g1 = n(idx_u_g_type::tag(), b);
+                        int g2 = n.at_offset(idx_u_g_type::tag(), off_a[0],
+                            off_a[1], off_a[2], b);
+                        int g3 = n(idx_u_g_type::tag(), a);
+                        int g4 = n.at_offset(idx_u_g_type::tag(), off_b[0],
+                            off_b[1], off_b[2], a);
+                        Curl.add_element(cur_idx, g1, 1.0 / dx_level);
+                        Curl.add_element(cur_idx, g2, -1.0 / dx_level);
+                        Curl.add_element(cur_idx, g3, -1.0 / dx_level);
+                        Curl.add_element(cur_idx, g4, 1.0 / dx_level);
+                        Curl.add_element(cur_idx, glo_idx, -1.0);
+                    }
+                  }
+                  else
+                  {
                     int cur_idx = n(idx_w_type::tag(), 0);
                     int glo_idx = n(idx_w_g_type::tag(), 0);
                     if (cur_idx < 0) continue;
@@ -4049,8 +4451,9 @@ class NewtonIteration
                     Curl.add_element(cur_idx, glo_idx_1_0, 1.0 / dx_level);
                     Curl.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
                     Curl.add_element(cur_idx, glo_idx_1_1, -1.0 / dx_level);
-                    
+
                     Curl.add_element(cur_idx, glo_idx, -1.0);
+                  }
                 }
             }
         }
@@ -4459,6 +4862,53 @@ class NewtonIteration
                     if (!it->is_leaf()) continue;
                     if (!it->is_correction()) continue;
 
+                    if constexpr (Dim == 3)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx_0 = n(idx_u_type::tag(), 0);
+                            int cur_idx_1 = n(idx_u_type::tag(), 1);
+                            int cur_idx_2 = n(idx_u_type::tag(), 2);
+
+                            if (cur_idx_0 > 0)
+                            {
+                                int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                                int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+                                int glob_idx_2 = n(idx_u_g_type::tag(), 2);
+
+                                const auto& coord_cur = n.level_coordinate();
+
+                                std::array<std::map<int, float_type>, 3> row_w;
+
+                                if (use_FMM)
+                                {
+                                    auto lb_c = it->data_r(idx_w_g_type::tag())
+                                                    .real_block()
+                                                    .base();
+                                    get_BC_blk_from_client_FMM_3d(lb_c,
+                                        coord_cur, root_rank, row_w);
+                                }
+                                else
+                                {
+                                    get_BC_idx_from_client_3d(coord_cur,
+                                        root_rank, row_w);
+                                }
+
+                                for (const auto& [key, val] : row_w[0])
+                                    boundary_u.add_element(cur_idx_0, key, val);
+                                for (const auto& [key, val] : row_w[1])
+                                    boundary_u.add_element(cur_idx_1, key, val);
+                                for (const auto& [key, val] : row_w[2])
+                                    boundary_u.add_element(cur_idx_2, key, val);
+
+                                boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
+                                boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
+                                boundary_u.add_element(cur_idx_2, glob_idx_2, -1.0);
+                            }
+                        }
+                    }
+                    else
+                    {
                     for (auto& n : it->data())
                     {
                         int cur_idx_0 = n(idx_u_type::tag(), 0);
@@ -4505,12 +4955,30 @@ class NewtonIteration
                             boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
                         }
                     }
+                    }
                 }
             }
             else
             {
                 for (int j = 0; j < tasks_vec[i]; j++)
                 {
+                    if constexpr (Dim == 3)
+                    {
+                        std::array<std::map<int, float_type>, 3> row_w;
+                        if (use_FMM)
+                        {
+                            get_BC_blk_from_client_FMM_3d(
+                                coordinate_type({0, 0, 0}),
+                                coordinate_type({0, 0, 0}), root_rank, row_w);
+                        }
+                        else
+                        {
+                            get_BC_idx_from_client_3d(
+                                coordinate_type({0, 0, 0}), root_rank, row_w);
+                        }
+                    }
+                    else
+                    {
                     std::map<int, float_type> row_u;
                     std::map<int, float_type> row_v;
                     /*get_BC_idx_from_client(coordinate_type({0, 0}),
@@ -4526,6 +4994,7 @@ class NewtonIteration
                     {
                         get_BC_idx_from_client(coordinate_type({0, 0}),
                             root_rank, row_u, row_v);
+                    }
                     }
                 }
             }
@@ -4671,7 +5140,229 @@ class NewtonIteration
         }
     }
 
-    void get_BC_blk_from_client_FMM(coordinate_type lb_c_r, coordinate_type c, int root, 
+    /** @brief 3D analog of get_BC_idx_from_client (dense, no FMM binning).
+     *
+     * u = curl(psi), with psi_c = LGF * w_c for each vorticity component c
+     * independently (the scalar LGF Green's function is isotropic, so the
+     * same 4 kernel evaluations -- base + one unit shift per axis -- serve
+     * all 3 components). The weight formula is Operator::curl_transpose's
+     * verified 3D cyclic stencil (operators.hpp, Dim==3 branch) applied
+     * analytically to the LGF kernel instead of to a discrete field, mirroring
+     * exactly how the 2D get_BC_idx_from_client's `u_weight`/`v_weight`
+     * reproduce curl_transpose's 2D stencil (`-psi + psi(0,1)`,
+     * `-psi(1,0) + psi`) applied to `lgf_val_00/01/10`.
+     *
+     * For dest (velocity) component d, with a=(d+1)%3, b=(d+2)%3, the row for
+     * u_d gets, from every candidate vorticity-source node n at offset
+     * (x_c,y_c,z_c) = target - n:
+     *   coeff on w_a(n) = lgf(x_c,y_c,z_c) - lgf(offset along axis b)
+     *   coeff on w_b(n) = lgf(offset along axis a) - lgf(x_c,y_c,z_c)
+     * (axis 0=x,1=y,2=z), each scaled by -dx_base as in the 2D code.
+     */
+    void get_BC_idx_from_client_3d(coordinate_type c, int root,
+        std::array<std::map<int, float_type>, 3>& row_w)
+    {
+        for (auto& r : row_w) r.clear();
+
+        coordinate_type c_loc = c;
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+
+        std::array<std::map<int, float_type>, 3> loc_smat;
+
+        int base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (auto& n : it->data())
+            {
+                const auto& coord_loc = n.level_coordinate();
+
+                int x_c = c_loc[0] - coord_loc[0];
+                int y_c = c_loc[1] - coord_loc[1];
+                int z_c = c_loc[2] - coord_loc[2];
+
+                float_type lgf_000 =
+                    lgf_lap_.derived().get(coordinate_type({x_c, y_c, z_c}));
+                float_type lgf_100 = lgf_lap_.derived().get(
+                    coordinate_type({x_c + 1, y_c, z_c}));
+                float_type lgf_010 = lgf_lap_.derived().get(
+                    coordinate_type({x_c, y_c + 1, z_c}));
+                float_type lgf_001 = lgf_lap_.derived().get(
+                    coordinate_type({x_c, y_c, z_c + 1}));
+                std::array<float_type, 3> lgf_offset = {
+                    lgf_100, lgf_010, lgf_001};
+
+                int w_idx[3] = {(int)n(idx_w_g_type::tag(), 0),
+                    (int)n(idx_w_g_type::tag(), 1),
+                    (int)n(idx_w_g_type::tag(), 2)};
+
+                for (int d = 0; d < 3; ++d)
+                {
+                    int         a        = (d + 1) % 3, b = (d + 2) % 3;
+                    float_type weight_a = lgf_000 - lgf_offset[b];
+                    float_type weight_b = lgf_offset[a] - lgf_000;
+                    this->map_add_element(
+                        w_idx[a], -weight_a * dx_base, loc_smat[d]);
+                    this->map_add_element(
+                        w_idx[b], -weight_b * dx_base, loc_smat[d]);
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        for (int d = 0; d < 3; ++d)
+        {
+            std::vector<std::map<int, float_type>> dest_mat;
+            boost::mpi::gather(
+                domain_->client_communicator(), loc_smat[d], dest_mat, root);
+            if (domain_->client_communicator().rank() != root) continue;
+            for (auto& m : dest_mat) map_add_map(m, row_w[d]);
+        }
+    }
+
+    // 3D FMM boundary block (use_FMM_in_Jac=true, Dim==3): port of the 2D
+    // get_BC_blk_from_client_FMM below. Same octree interaction list (a block
+    // at level l is included when its parent is within n_range_p of the
+    // target block and it is not itself within n_range_c; all non-correction
+    // base-level blocks of the near field), extended to three axes, with the
+    // 3D Biot-Savart LGF weights of get_BC_idx_from_client_3d (M10): for
+    // destination component d, a=(d+1)%3, b=(d+2)%3,
+    //   coeff(w_a) = -(lgf_000 - lgf_offset(b)) dx_base,
+    //   coeff(w_b) = -(lgf_offset(a) - lgf_000) dx_base.
+    // Coarse levels use the anterpolated vorticity DOFs built by
+    // construct_upward_intrp (M9), each carrying its children's summed charge,
+    // hence the same dx_base factor (as in 2D).
+    void get_BC_blk_from_client_FMM_3d(coordinate_type lb_c_r, coordinate_type c,
+        int root, std::array<std::map<int, float_type>, 3>& row_w)
+    {
+        for (auto& r : row_w) r.clear();
+
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        coordinate_type lb_c = lb_c_r - base;
+
+        int             N_ext = domain_->block_extent()[0];
+        coordinate_type center = -base;
+        for (int d = 0; d < 3; d++) center[d] = (center[d] / N_ext) * N_ext;
+
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
+
+        std::array<std::map<int, float_type>, 3> loc_smat;
+        int        base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        // LGF Biot-Savart weights of the source at relative offset (x,y,z)
+        auto add_source = [&](int x_c, int y_c, int z_c, const int w_idx[3]) {
+            float_type lgf_000 =
+                lgf_lap_.derived().get(coordinate_type({x_c, y_c, z_c}));
+            std::array<float_type, 3> lgf_offset = {
+                lgf_lap_.derived().get(coordinate_type({x_c + 1, y_c, z_c})),
+                lgf_lap_.derived().get(coordinate_type({x_c, y_c + 1, z_c})),
+                lgf_lap_.derived().get(coordinate_type({x_c, y_c, z_c + 1}))};
+            for (int d = 0; d < 3; ++d)
+            {
+                int a = (d + 1) % 3, b = (d + 2) % 3;
+                if (w_idx[a] > 0)
+                    this->map_add_element(w_idx[a],
+                        -(lgf_000 - lgf_offset[b]) * dx_base, loc_smat[d]);
+                if (w_idx[b] > 0)
+                    this->map_add_element(w_idx[b],
+                        -(lgf_offset[a] - lgf_000) * dx_base, loc_smat[d]);
+            }
+        };
+        auto within = [](const coordinate_type& dist, int n) {
+            for (int d = 0; d < 3; ++d)
+                if (!(dist[d] >= -n && dist[d] < 2 * n)) return false;
+            return true;
+        };
+
+        for (int l = base_level; l >= 1; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (it->is_correction() && l == base_level) continue;
+
+                coordinate_type add_one;
+                add_one[0] = 1; add_one[1] = 1; add_one[2] = 1;
+                int n_range_p = std::pow(2, base_level - l + 1) * N_ext * FMM_fac;
+                int n_range_c = std::pow(2, base_level - l) * N_ext * FMM_fac;
+
+                auto cur_real_base =
+                    (it->data_r(idx_w_g_type::tag()).real_block().base() - base +
+                        add_one) * std::pow(2, base_level - l);
+                auto prt_real_base =
+                    (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() -
+                        base + add_one) * std::pow(2, base_level - l + 1);
+                auto tar_real_base = lb_c + add_one;
+
+                bool include_oct = within(tar_real_base - prt_real_base, n_range_p);
+                if (FMM_include_center && within(center - prt_real_base, n_range_p))
+                    include_oct = true;
+                if (l != base_level &&
+                    within(tar_real_base - cur_real_base, n_range_c))
+                    include_oct = false;
+                if (FMM_include_center && l != base_level &&
+                    within(center - cur_real_base, n_range_c))
+                    include_oct = false;
+                if (!include_oct) continue;
+
+                if (l != base_level)
+                {
+                    int  N = N_ext + lBuffer + rBuffer;
+                    auto real_base =
+                        it->data_r(idx_w_g_type::tag()).real_block().base() - base;
+                    int  scale = std::pow(2, base_level - l);
+                    auto& g0 = it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    auto& g1 = it->data_r(idx_w_g_type::tag(), 1).linalg_data();
+                    auto& g2 = it->data_r(idx_w_g_type::tag(), 2).linalg_data();
+                    for (int si = 0; si < N; si++)
+                        for (int sj = 0; sj < N; sj++)
+                            for (int sk = 0; sk < N; sk++)
+                            {
+                                int w_idx[3] = {(int)g0.at(si, sj, sk),
+                                    (int)g1.at(si, sj, sk), (int)g2.at(si, sj, sk)};
+                                add_source(c_loc[0] - (real_base[0] + si) * scale,
+                                    c_loc[1] - (real_base[1] + sj) * scale,
+                                    c_loc[2] - (real_base[2] + sk) * scale, w_idx);
+                            }
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto cl = n.level_coordinate() - base;
+                        int w_idx[3] = {(int)n(idx_w_g_type::tag(), 0),
+                            (int)n(idx_w_g_type::tag(), 1),
+                            (int)n(idx_w_g_type::tag(), 2)};
+                        add_source(c_loc[0] - cl[0], c_loc[1] - cl[1],
+                            c_loc[2] - cl[2], w_idx);
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        for (int d = 0; d < 3; ++d)
+        {
+            std::vector<std::map<int, float_type>> dest_mat;
+            boost::mpi::gather(
+                domain_->client_communicator(), loc_smat[d], dest_mat, root);
+            if (domain_->client_communicator().rank() != root) continue;
+            for (auto& m : dest_mat) map_add_map(m, row_w[d]);
+        }
+    }
+
+    void get_BC_blk_from_client_FMM(coordinate_type lb_c_r, coordinate_type c, int root,
         std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
     {
         //Send and recv
@@ -5697,6 +6388,127 @@ class NewtonIteration
 
         auto c_cntr_nli = psolver.c_cntr_nli();
 
+      if constexpr (Dim == 3)
+      {
+        // 3D analog: identical structure to the 2D branch below, just with a
+        // 3rd (z) axis threaded through the flat idx_vec indexing, the child
+        // bit-decode, and the tensor-product anterpolation weight. The
+        // anterpolation machinery itself (c_cntr_nli_.antrp_mat_sub_,
+        // it->num_children()==8) is already Dim-generic -- it's used the
+        // same way by the 3D NS solver's own FMM upward pass.
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                const int num_child = it->num_children();
+                std::vector<std::vector<int>> idx_vec;
+                idx_vec.resize(num_child);
+
+                int N = it->data().descriptor().extent()[0];
+                int Np2 = N + 2;
+                int idx_size = Np2 * Np2 * Np2;
+
+                if (it->locally_owned() && it->has_data()) {
+                    for (int i = 0; i < it->num_children(); i++) {
+                        auto child = it->child(i);
+                        if (child && child->locally_owned() && child->has_data()) {
+                            idx_vec[i].resize(idx_size);
+                            auto child_idx_vec =
+                                child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                            for (int idx_i = 0; idx_i < Np2; idx_i++)
+                                for (int idx_j = 0; idx_j < Np2; idx_j++)
+                                    for (int idx_k = 0; idx_k < Np2; idx_k++)
+                                    {
+                                        int loc_idx =
+                                            (idx_i * Np2 + idx_j) * Np2 + idx_k;
+                                        idx_vec[i][loc_idx] =
+                                            child_idx_vec.at(idx_i, idx_j, idx_k);
+                                    }
+                            continue;
+                        }
+                        else if (child) {
+                            int source_rank = child->rank();
+                            int tag_val = child->global_id();
+                            idx_vec[i].resize(idx_size);
+                            world.recv(source_rank, tag_val, idx_vec[i]);
+                        }
+                    }
+                }
+                else {
+                    for (int i = 0; i < it->num_children(); i++)
+                    {
+                        auto child = it->child(i);
+                        int parent_rank = it->rank();
+                        if (!child || !child->locally_owned() || !child->has_data()) continue;
+
+                        std::vector<int> tmp_idx_vec;
+                        tmp_idx_vec.resize(idx_size);
+                        auto child_idx_vec =
+                            child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                        for (int idx_i = 0; idx_i < Np2; idx_i++)
+                            for (int idx_j = 0; idx_j < Np2; idx_j++)
+                                for (int idx_k = 0; idx_k < Np2; idx_k++)
+                                {
+                                    int loc_idx =
+                                        (idx_i * Np2 + idx_j) * Np2 + idx_k;
+                                    tmp_idx_vec[loc_idx] =
+                                        child_idx_vec.at(idx_i, idx_j, idx_k);
+                                }
+                        int tag_val = child->global_id();
+                        world.send(parent_rank, tag_val, tmp_idx_vec);
+                    }
+                }
+
+                if (it->locally_owned() && it->has_data()) {
+                    auto& lin_data = it->data_r(idx_w_type::tag(), 0).linalg_data();
+                    auto& lin_data_g = it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    for (int i = 0; i < Np2; i++)
+                    for (int j = 0; j < Np2; j++)
+                    for (int k = 0; k < Np2; k++)
+                    {
+                        int cur_idx = lin_data.at(i, j, k);
+                        int cur_g_idx = lin_data_g.at(i, j, k);
+                        if (cur_idx < 0) {
+                            std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                        }
+                        upward_intrp.add_element(cur_idx, cur_g_idx, -1.0);
+
+                        for (int child_idx = 0; child_idx < it->num_children(); child_idx++) {
+                            int idx_x = (child_idx & (1 << 0)) >> 0;
+                            int idx_y = (child_idx & (1 << 1)) >> 1;
+                            int idx_z = (child_idx & (1 << 2)) >> 2;
+
+                            auto x_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_x].data_;
+                            auto y_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_y].data_;
+                            auto z_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_z].data_;
+
+                            if (idx_vec[child_idx].size() == 0) continue;
+
+                            int sub_lo = (l == (base_level - 1)) ? 1 : 0;
+                            int sub_hi = (l == (base_level - 1)) ? (N + 1) : Np2;
+                            for (int sub_i = sub_lo; sub_i < sub_hi; sub_i++)
+                            for (int sub_j = sub_lo; sub_j < sub_hi; sub_j++)
+                            for (int sub_k = sub_lo; sub_k < sub_hi; sub_k++)
+                            {
+                                int loc_idx =
+                                    (sub_i * Np2 + sub_j) * Np2 + sub_k;
+                                int child_idx_g = idx_vec[child_idx][loc_idx];
+                                float_type val_x = x_intrp_mat.at(i, sub_i);
+                                float_type val_y = y_intrp_mat.at(j, sub_j);
+                                float_type val_z = z_intrp_mat.at(k, sub_k);
+                                float_type val_t = val_x * val_y * val_z;
+                                if (std::abs(val_t) < 1e-15) continue;
+                                upward_intrp.add_element(
+                                    cur_idx, child_idx_g, val_t);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+      else
+      {
         for (int l = base_level - 1; l >= 0; l--)
         {
             /*if (domain_->is_client())
@@ -5725,7 +6537,7 @@ class NewtonIteration
                     idx_vec[i].resize(idx_size);
                 }*/
                 if (it->locally_owned() && it->has_data()) {
-                    
+
                     //octant located in this processor, need to receive data
                     //octant_vec.resize(num_child);
                     for (int i = 0; i < it->num_children(); i++) {
@@ -5747,7 +6559,7 @@ class NewtonIteration
                             continue;
                         }
                         else if (child) {
-                            
+
                             int source_rank = child->rank();
 
                             int tag_val = child->global_id();
@@ -5804,7 +6616,7 @@ class NewtonIteration
                     for (int i = 0; i < N+2; i++) {
                         for (int j = 0; j < N+2; j++) {
 
-                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl; 
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl;
                             //get current idx
                             int cur_idx = lin_data.at(i, j);
                             int cur_g_idx = lin_data_g.at(i, j);
@@ -5813,11 +6625,11 @@ class NewtonIteration
                             }
                             upward_intrp.add_element(cur_idx, cur_g_idx, -1.0);
 
-                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl; 
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl;
 
                             for (int child_idx = 0; child_idx < it->num_children(); child_idx++) {
 
-                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl; 
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl;
                                 auto child = it->child(child_idx);
                                 //int  n = lin_data_g->shape()[0];
                                 int  idx_x = (child_idx & (1 << 0)) >> 0;
@@ -5897,6 +6709,7 @@ class NewtonIteration
 
             //domain_->client_communicator().barrier();
         }
+      }
 
         upward_intrp.scale_entries(Curl_factor);
 
@@ -6030,24 +6843,80 @@ class NewtonIteration
     }*/
 
 
-    /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    //Right-preconditioner for BCG_Stab: identity on the (Target_face,
+    //Target_cell) velocity/pressure directions, and on the IB-force
+    //direction, a CG solve of the pure-Poisson (dimension-general, no
+    //Helmholtz) Schur complement E(I - G L^-1 D)H -- the IB no-slip /
+    //incompressibility coupling is usually the dominant source of
+    //ill-conditioning in this saddle-point Jacobian. This mirrors
+    //LinSysSolver::CG_solve/ET_H_S_E (linsys.hpp) with alpha=0.0 (which
+    //skips the Helmholtz/integrating-factor branch entirely), but solves
+    //for a local vector instead of mutating domain_->ib().force().
+    force_type precondition_force(force_type& rhs) noexcept
+    {
+        real_coordinate_type tmp_coord(0.0);
+        force_type z(domain_->ib().size(), tmp_coord);
+        if (domain_->is_server()) return z;
+
+        force_type Ax(domain_->ib().size(), tmp_coord);
+        force_type r(rhs);
+        force_type p(rhs);
+
+        float_type rsold = dotVec(r, r);
+        if (rsold == 0.0) return z;
+
+        for (int k=0; k<cg_max_itr_; k++)
+        {
+            lsolver.template ET_H_S_E<face_aux2_type>(p, Ax, 0.0);
+            float_type pAp = dotVec(p, Ax);
+            if (std::abs(pAp) < 1e-30) break;
+            float_type alpha = rsold / pAp;
+
+            for (int i=0; i<domain_->ib().size(); ++i)
+            {
+                if (domain_->ib().rank(i)!=comm_.rank()) continue;
+                z[i] = z[i] + p[i]*alpha;
+                r[i] = r[i] - Ax[i]*alpha;
+            }
+
+            float_type rsnew = dotVec(r, r);
+            if (sqrt(rsnew/rsold) < cg_threshold_)
+            {
+                rsold = rsnew;
+                break;
+            }
+
+            for (int i=0; i<domain_->ib().size(); ++i)
+            {
+                if (domain_->ib().rank(i)!=comm_.rank())
+                {
+                    p[i] = real_coordinate_type(0.0);
+                    continue;
+                }
+                p[i] = r[i] + p[i]*(rsnew/rsold);
+            }
+            rsold = rsnew;
+        }
+
+        for (int i=0; i<domain_->ib().size(); ++i)
+            if (domain_->ib().rank(i)!=comm_.rank()) z[i] = real_coordinate_type(0.0);
+
+        return z;
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void BCG_Stab(force_type& force_source, force_type& force_target) noexcept
     {
 
         if (domain_->is_server())
             return;
-        
-        //TODO: solver to solve the inverse of Jacobian with the vectors
-        //clean<Target_face>();
-        //clean<Target_cell>();
-        real_coordinate_type tmp_coord(0.0);
-        //std::fill(force_target.begin(), force_target.end(),
-        //    tmp_coord);
+
+        //Solves A*x = b matrix-free, using only the Jacobian-vector product
+        //(no PETSc): b is (force_source, Source_face, Source_cell), x is the
+        //unknown (force_target, Target_face, Target_cell), which must already
+        //hold the initial guess x0 (zero for a fresh Newton step) on entry.
 
         real_coordinate_type tmp(0.0);
-        //force_type Ax(ib_->size(), tmp);
-        //force_type r (ib_->size(), tmp);
-        //force_type Ap(ib_->size(), tmp);
         clean<conj_Ap_cell_aux_type>();
         clean<conj_Ap_face_aux_type>();
         clean<conj_Ax_cell_aux_type>();
@@ -6070,19 +6939,10 @@ class NewtonIteration
         //force_type As_force(domain_->ib().size(), tmp);
         force_type s_force(domain_->ib().size(), tmp);
 
-        //Compute the actual source term
-        //std::cout << "computing actual forcing term" << std::endl;
-        //Adjoint_Jacobian<Source_face,Source_cell, conj_r_face_aux_type, conj_r_cell_aux_type>(force_source, r_force);
-
-        
-
-        // Ax
-        //this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
-        //std::cout << "computing Ax" << std::endl;
+        // Ax0 = A(x0)
         this->template Jacobian<Target_face, Target_cell, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(force_target, Ax_force);
-        //printvec(Ax, "Ax");
 
-        //  res = uc - Ax
+        //  r0 = b - Ax0
         for (int i=0; i<domain_->ib().size(); ++i)
         {
             if (domain_->ib().rank(i)!=comm_.rank())
@@ -6091,10 +6951,8 @@ class NewtonIteration
                 r_force[i]=force_source[i]-Ax_force[i];
         }
 
-        //std::cout << "computing rsold" << std::endl;
-
-        copy<Target_face, conj_r_face_aux_type>();
-        copy<Target_cell, conj_r_cell_aux_type>();
+        copy<Source_face, conj_r_face_aux_type>();
+        copy<Source_cell, conj_r_cell_aux_type>();
 
         add<conj_Ax_face_aux_type, conj_r_face_aux_type>(-1.0);
         add<conj_Ax_cell_aux_type, conj_r_cell_aux_type>(-1.0);
@@ -6107,76 +6965,101 @@ class NewtonIteration
 
         // rold = r'* r;
 
-        float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
-        
+        //normalize the residual by the norm of the RHS b, not of the
+        //(possibly still-zero) unknown x
+        float_type f2 = this->template dotAll<Source_face, Source_cell, Source_face, Source_cell>(force_source, force_source);
+        if (f2 == 0.0) return;
+
         float_type rsold = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
 
         if (comm_.rank()==1)
-            std::cout<< "residue square = "<< rsold/f2<<std::endl;;
+            std::cout<< "residue square = "<< rsold/f2<<std::endl;
         if (sqrt(rsold/f2)<cg_threshold_)
             return;
-        
+
+        //Track the best (lowest-residual) iterate seen: BiCGSTAB residuals
+        //are not guaranteed to decrease monotonically, and a diverged
+        //iterate must never be handed back to the Newton update.
+        float_type best_res = rsold/f2;
+        copy<Target_face, r_i_tmp_type>();
+        copy<Target_cell, cell_aux_tmp_type>();
+        force_type best_forcing = force_target;
+
         float_type rho = 1;
         float_type rho_old = rho;
         float_type w = 1;
         float_type alpha = 1;
+        const float_type breakdown_tol = 1e-30;
 
         for (int k=0; k<cg_max_itr_; k++)
         {
 
             rho = this->template dotAll<conj_rh_face_aux_type, conj_rh_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(rh_force, r_force);
+            if (std::abs(rho) < breakdown_tol) break;
             float_type beta = (rho/rho_old)*(alpha/w);
             AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(Ap_force, p_force, -w);
             AddAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(r_force, p_force, 1.0, beta);
-            
-            // Ap = A(p)
-            this->template Jacobian<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
+
+            // y = M^-1 p  (identity on face/cell, preconditioned IB force)
+            // Ap = A(y)
+            force_type y_force = precondition_force(p_force);
+            this->template Jacobian<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(y_force, Ap_force);
             float_type r_hat_v = this->template dotAll<conj_rh_face_aux_type, conj_rh_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(rh_force, Ap_force);
+            if (std::abs(r_hat_v) < breakdown_tol) break;
             alpha = rho/r_hat_v;
 
-            //add(f, p, 1.0, alpha);
-            AddAll<conj_p_face_aux_type, conj_p_cell_aux_type, Target_face, Target_cell>(p_force, force_target, alpha);
+            // x = x + alpha*y
+            AddAll<conj_p_face_aux_type, conj_p_cell_aux_type, Target_face, Target_cell>(y_force, force_target, alpha);
 
-            //auto s = r;
+            // s = r - alpha*Ap
             copy<conj_r_face_aux_type, conj_s_face_aux_type>();
             copy<conj_r_cell_aux_type, conj_s_cell_aux_type>();
             s_force = r_force;
-            //add(s, v, 1.0, -alpha);
             AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ap_force, s_force, -alpha);
-            this->template Jacobian<conj_s_face_aux_type, conj_s_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(s_force, Ax_force);
+
+            // z = M^-1 s ; As = A(z)
+            force_type z_force = precondition_force(s_force);
+            this->template Jacobian<conj_s_face_aux_type, conj_s_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(z_force, Ax_force);
             float_type As_s = this->template dotAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ax_force, s_force);
             float_type As_As = this->template dotAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(Ax_force, Ax_force);
+            if (As_As < breakdown_tol) break;
             w = As_s/As_As;
-            //add(f, s, 1.0, w);
-            AddAll<conj_s_face_aux_type, conj_s_cell_aux_type, Target_face, Target_cell>(s_force, force_target, w);
-            //r = s;
+
+            // x = x + w*z
+            AddAll<conj_s_face_aux_type, conj_s_cell_aux_type, Target_face, Target_cell>(z_force, force_target, w);
+
+            // r = s - w*As
             copy<conj_s_cell_aux_type, conj_r_cell_aux_type>();
             copy<conj_s_face_aux_type, conj_r_face_aux_type>();
             r_force = s_force;
-            //add(r, As, 1.0, -w);
             AddAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(Ax_force, r_force, -w);
 
             float_type rsnew = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
-            float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
-            //float_type rs_mag = std::abs(rsnew);
+            float_type res_ratio = rsnew/f2;
 
-            /*this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
-            for (int i = 0; i < ib_->size(); ++i)
+            if (comm_.rank()==1)
+                std::cout<< "BCGstab residue square = "<< res_ratio<<std::endl;
+
+            if (res_ratio < best_res)
             {
-                if (ib_->rank(i) != comm_.rank()) Error[i] = 0;
-                else
-                    Error[i] = uc[i] - Ax[i];
+                best_res = res_ratio;
+                copy<Target_face, r_i_tmp_type>();
+                copy<Target_cell, cell_aux_tmp_type>();
+                best_forcing = force_target;
             }
-            float_type errorMag = dot(Error, Error);*/
-            /*if (comm_.rank()==1)
-                std::cout<< "BCGstab residue square = "<< rsnew/f2/*<< " Error is " << errorMag*//* << std::endl;
-            if (sqrt(rsnew/f2)<cg_threshold_)
-                break;
 
-            // p = r + (rsnew / rsold) * p;
+            if (sqrt(res_ratio)<cg_threshold_)
+                break;
+            if (std::abs(w) < breakdown_tol) break;
+
             rho_old = rho;
         }
-    }*/
+
+        //always hand back the best iterate seen, never a diverged tail
+        copy<r_i_tmp_type, Target_face>();
+        copy<cell_aux_tmp_type, Target_cell>();
+        force_target = best_forcing;
+    }
 
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void ATA(force_type& force_source, force_type& force_target) noexcept
@@ -6524,6 +7407,77 @@ class NewtonIteration
         }
     }
 
+
+    // Diagnostic (tests/JacCheck2D): NewtonRHS with each residual term
+    // switchable, to compare term by term against the assembled pieces.
+    // mask bits: 1 laplacian/Re, 2 -nonlinear, 4 -gradient(p), 8 smearing(f),
+    // 16 -divergence(u), 32 IB projection (+ bc_vel subtraction).
+    // pad_velocity and the correction-cell pressure cleaning are always done,
+    // exactly as in NewtonRHS.
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void NewtonRHS_terms(force_type& force_source, force_type& force_target,
+        unsigned mask) noexcept
+    {
+        if (domain_->is_server()) return;
+        boost::mpi::communicator world;
+
+        pad_velocity<Source_face, Source_face>(true);
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        std::fill(force_target.begin(), force_target.end(), tmp_coord);
+
+        laplacian<Source_face, laplacian_face_type>();
+        nonlinear<Source_face, g_i_type>();
+        if (mask & 2u) add<g_i_type, Target_face>(-1);
+        if (mask & 1u) add<laplacian_face_type, Target_face>(1.0 / Re_);
+
+        clean<face_aux_tmp_type>();
+        if (!p_set_zero)
+            clean_leaf_correction_boundary<Source_cell>(
+                domain_->tree()->base_level(), true, 1);
+        gradient<Source_cell, face_aux_tmp_type>(-1.0);
+        if (mask & 4u) add<face_aux_tmp_type, Target_face>(1.0);
+
+        clean<face_aux_tmp_type>();
+        lsolver.template smearing<face_aux_tmp_type>(force_source, false);
+        if (mask & 8u) add<face_aux_tmp_type, Target_face>(1.0);
+
+        if (mask & 16u) divergence<Source_face, Target_cell>(-1.0);
+
+        if (mask & 32u)
+        {
+            lsolver.template projection<Source_face>(force_target);
+            auto u_f = simulation_->bc_vel();
+            for (std::size_t i = 0; i < force_target.size(); ++i)
+            {
+                if (domain_->ib().rank(i) != comm_.rank()) continue;
+                auto ib_coord = domain_->ib().coordinate(i);
+                for (std::size_t d = 0; d < force_target[0].size(); ++d)
+                    force_target[i][d] -= u_f(d, 5, ib_coord);
+            }
+        }
+    }
+
+    // Diagnostic: choose which assembled pieces construct_Jac_p() /
+    // construct_Jac_from_Jac_p() add to Jac (same bits as the add_* config
+    // keys): 1 boundary_u, 2 L, 4 DN, 8 Div, 16 Grad, 32 Curl, 64 project,
+    // 128 smearing, 256 upward_intrp. Re-call construct_Jac_p() after.
+    void set_jac_terms(unsigned m) noexcept
+    {
+        add_Boundary_u = m & 1u;
+        add_L = m & 2u;
+        add_DN = m & 4u;
+        add_Div = m & 8u;
+        add_Grad = m & 16u;
+        add_Curl = m & 32u;
+        add_project = m & 64u;
+        add_smearing = m & 128u;
+        add_upward_intrp = m & 256u;
+    }
 
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void NewtonRHS_No_nonlinear(force_type& force_source, force_type& force_target) noexcept
@@ -8979,6 +9933,21 @@ class NewtonIteration
     //variables for indexing for constructing matrix
     int max_idx_from_prev_prc = 0;
     int max_local_idx = 0;
+
+  public:
+    // Local DOF-block boundaries (1-based cumulative counter) filled by
+    // Assigning_idx(): velocity rows are [1, blk_u_end_], pressure
+    // (blk_u_end_, blk_p_end_], fine vorticity (blk_p_end_, blk_wf_end_],
+    // coarse (FMM) vorticity (blk_wf_end_, blk_wc_end_], IB force
+    // (blk_wc_end_, max_local_idx]. Used by tests/BaseFlow2D to audit which
+    // block each rank-deficient / null-pivot row belongs to.
+    int blk_u_end_  = 0;
+    int blk_p_end_  = 0;
+    int blk_wf_end_ = 0;
+    int blk_wc_end_ = 0;
+    int blk_f_end_  = 0;   // == max_local_idx (end of the IB-force block)
+
+  private:
     
 
     std::string                fname_prefix_;

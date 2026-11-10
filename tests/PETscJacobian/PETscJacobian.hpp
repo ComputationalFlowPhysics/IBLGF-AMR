@@ -153,6 +153,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
 
+		gauss_x0_ = simulation_.dictionary()->template get_or<float_type>("gauss_x0", 0.0);
+		gauss_y0_ = simulation_.dictionary()->template get_or<float_type>("gauss_y0", 0.0);
 		pert_mag = simulation_.dictionary()->template get_or<float_type>("pert_mag", 0.1);
 
 		simulation_.frame_vel() =
@@ -765,8 +767,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
             for (const auto& [key, val] : row)
             {
-                int loc_col = key-1;
-                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &val, INSERT_VALUES));
+                PetscInt    loc_col = key-1;
+                PetscScalar pv = val; // PETSc may be built complex
+                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &pv, INSERT_VALUES));
             }
         }
 
@@ -778,7 +781,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         for (i = rstart; i < rend;i++) {
             int i_loc = i - rstart;
-            float_type v = b_val[i_loc];
+            PetscScalar v = b_val[i_loc];
             PetscCall(VecSetValues(b, 1, &i, &v, INSERT_VALUES));
         }
 
@@ -791,8 +794,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         PetscCall(PCSetType(pc, PCLU));
 #if defined(PETSC_HAVE_MUMPS)
         PetscCall(PCFactorSetMatSolverType(pc, MATSOLVERMUMPS));
-        icntl = 29; ival = 2;
-        MatMumpsSetIcntl(F,icntl,ival);
 #endif
 
         PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
@@ -817,7 +818,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         for (i = rstart; i < rend;i++) {
             int i_loc = i - rstart;
-            PetscCall(VecGetValues(x, 1, &i, &(x_val[i_loc])));
+            PetscScalar xv;
+            PetscCall(VecGetValues(x, 1, &i, &xv));
+            x_val[i_loc] = PetscRealPart(xv);
         }
 
         ifherk.CSR2Grid<u_num_type, p_num_type>(x_val);
@@ -988,6 +991,17 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                                      coord[2] - center[2] * scaling + 0.5) *
                                  dx_level;*/
 
+                // optional shift of the Gaussian center (physical units, from
+                // the domain center): gauss_x0 / gauss_y0, e.g. to put it at the
+                // outer boundary so the boundary rows see O(1) data
+                xc -= gauss_x0_; yc -= gauss_y0_;
+                xf0 -= gauss_x0_; yf0 -= gauss_y0_;
+                xf1 -= gauss_x0_; yf1 -= gauss_y0_;
+                xf2 -= gauss_x0_; yf2 -= gauss_y0_;
+                xe0 -= gauss_x0_; ye0 -= gauss_y0_;
+                xe1 -= gauss_x0_; ye1 -= gauss_y0_;
+                xe2 -= gauss_x0_; ye2 -= gauss_y0_;
+
                 const float_type r = std::sqrt(xc * xc + yc * yc);
                 const float_type rf0 =
                     std::sqrt(xf0 * xf0 + yf0 * yf0);
@@ -1057,6 +1071,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 	}
 
     private:
+    float_type gauss_x0_ = 0.0, gauss_y0_ = 0.0;
 
     boost::mpi::communicator client_comm_;
 

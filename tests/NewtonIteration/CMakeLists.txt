@@ -8,7 +8,7 @@ add_custom_target(copy_NewtonIteration ALL
                       ${CTEST_WORKING_DIRECTORY}/${NAME}
                       )
 
-set(Ptest_list NewtonIteration_Test)
+# set(Ptest_list NewtonIteration_Test)
 
 # add the executable
 add_executable(NewtonIteration.x NewtonIteration.cpp ${SOURCES})

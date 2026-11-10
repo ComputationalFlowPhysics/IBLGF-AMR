@@ -13,6 +13,7 @@
 #ifndef IBLGF_SOLVER_MODAL_ANALYSIS_POD_PETSC_HPP
 #define IBLGF_SOLVER_MODAL_ANALYSIS_POD_PETSC_HPP
 
+#include <iblgf/solver/modal_analysis/field_vec.hpp>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -819,39 +820,12 @@ class POD
     template<class Field_idx, class Field_re>
     float_type grid2vec(Vec x)
     {
-        PetscComplex* x_array;
-        PetscCall(VecGetArray(x, &x_array));
-        for (int i = 0; i < max_local_idx; ++i) { x_array[i] = 0.0; }
-        if (domain_->is_client())
-        {
-            int base_level = domain_->tree()->base_level();
-            for (int l = base_level; l < domain_->tree()->depth(); l++)
-            {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    // if (!it->data().is_allocated()) continue;
-                    if (it->is_leaf())
-                    {
-                        for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
-                        {
-                            for (auto& n : it->data())
-                            {
-                                int i_local = n(Field_idx::tag(), field_idx) - 1; //since used to be 1 based
-                                if (i_local < 0) continue;
-                                PetscScalar  value_r = n(Field_re::tag(), field_idx);
-                                PetscComplex value = value_r;
-                                x_array[i_local] = value;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        // shared implementation (field_vec.hpp): zero the local array, write
+        // the real part, unweighted -- unchanged behavior
+        PetscCall((field_vec::grid2vec<Field_idx, Field_re>(
+            domain_, x, field_vec::Part::real, true)));
         PetscCall(VecAssemblyBegin(x));
         PetscCall(VecAssemblyEnd(x));
-        PetscCall(VecRestoreArray(x, &x_array));
         return 0.0;
     }
     template<class Field_idx, class Field_re>
@@ -887,82 +861,24 @@ class POD
     template<class Field_idx, class Field_re>
     float_type grid2vec_weighted_l2_norm()
     {
-        boost::mpi::communicator world;
-        float_type               sumsq_local = 0.0;
-        if (domain_->is_client())
-        {
-            const int base_level = domain_->tree()->base_level();
-            for (int l = base_level; l < domain_->tree()->depth(); ++l)
-            {
-                const auto dx_level = 1.0 / math::pow2(l);
-                const auto w = std::pow(dx_level, domain_->dimension() / 2.0);
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    if (!it->is_leaf() ) continue;
-                    for (auto& n : it->data())
-                    {
-                        for (std::size_t field_idx = 0; field_idx < Field_re::nFields(); ++field_idx)
-                        {
-                            if (n(Field_idx::tag(), static_cast<int>(field_idx)) <= 0) continue;
-                            const float_type v = n(Field_re::tag(), static_cast<int>(field_idx));
-                            const float_type vw = v * w;
-                            sumsq_local += vw * vw;
-                        }
-                    }
-                }
-            }
-        }
-        float_type sumsq = 0.0;
-        boost::mpi::all_reduce(world, sumsq_local, sumsq, std::plus<float_type>());
-        return std::sqrt(std::max<float_type>(sumsq, 1e-30));
+        // shared implementation (field_vec.hpp), weight sqrt((1/2^l)^dim)
+        const int dim = domain_->dimension();
+        return field_vec::weighted_l2_norm<Field_idx, Field_re>(domain_,
+            [dim](int l) { return std::pow(1.0 / math::pow2(l), dim / 2.0); });
     }
     template<class Field_idx, class Field_re>
     float_type vec2grid(Vec x, int w_type = 0)
     {
-        //loop through points
-        const PetscComplex* x_array;
-        PetscCall(VecGetArrayRead(x, &x_array));
-        int base_level = domain_->tree()->base_level();
-        for (int l = base_level; l < domain_->tree()->depth(); l++)
-        {
-            const auto dx_level = 1.0 / math::pow2(l);
-            float_type w_1_2;
-            if (w_type == 1)
-            {
-                w_1_2 = std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
-            }
-            else
-            {
-                w_1_2 = 1.0; //no scaling
-            }
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                // if (!it->data().is_allocated()) continue;
-                if (it->is_leaf())
-                {
-                    for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
-                    {
-                        for (auto& n : it->data())
-                        {
-                            int i_local = n(Field_idx::tag(), field_idx) - 1; //since used to be 1 based
-                            if (i_local < 0) continue;
-                            // int i_global =
-                            //     (rank - 1) * m_local + i_local - 1;
-                            PetscComplex value;
-                            // PetscCall(MatGetValuesLocal(B, 1, &i_local, 1, &j, &value));
-                            value = x_array[i_local];
-                            n(Field_re::tag(), field_idx) = PetscRealPart(value) / w_1_2;
-
-                            // n(Field_re::tag(), field_idx * N_tv + idx) = PetscRealPart(value) / w_1_2;
-                            // n(Field_im::tag(), field_idx * N_tv + idx) = PetscImaginaryPart(value) / w_1_2;
-                        }
-                    }
-                }
-            }
-        }
-        VecRestoreArrayRead(x, &x_array);
+        // shared implementation (field_vec.hpp); w_type == 1: divide by
+        // W^(1/2) = sqrt((1/2^l)^dim), else unweighted -- unchanged behavior
+        const int dim = domain_->dimension();
+        field_vec::weight_fn w = field_vec::unit_weight;
+        if (w_type == 1)
+            w = [dim](int l) { return std::pow(1.0 / math::pow2(l), dim / 2.0); };
+        // POD's vec2grid also runs on the server (no locally owned blocks);
+        // the shared one returns early there -- same effect
+        PetscCall((field_vec::vec2grid<Field_idx, Field_re>(
+            domain_, x, field_vec::Part::real, w)));
         return 0.0;
     }
     template<typename F>

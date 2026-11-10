@@ -28,7 +28,7 @@
 #include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
 #include <iblgf/solver/Newton/LinearNS.hpp>
-#include <iblgf/solver/Stability_solver/Stability_solver.hpp>
+// #include <iblgf/solver/Stability_solver/Stability_solver.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
 namespace iblgf
@@ -68,6 +68,9 @@ class SetupNewton
       //(u_i,                 float_type,  Dim,  1,  1,  face,true),
       (fu_i,                float_type,  Dim,  1,  1,  face,true),
       (fp_i,                float_type,  1,  1,  1,  cell,true),
+      //Newton update (search direction) fields
+      (du_i,                float_type,  Dim,  1,  1,  face,true),
+      (dp_i,                float_type,  1,  1,  1,  cell,true),
       (fw_i,                float_type,  (Dim*2 - 3),  1,  1,  edge,true),
       (g_i,                 float_type,  Dim,  1,  1,  face,true),
       (r_i,                 float_type,  Dim,  1,  1,  face,true),
@@ -86,12 +89,12 @@ class SetupNewton
       (nonlinear_tmp1,      float_type,  Dim,  1,  1,  face,true),
       (idx_u,               float_type,  Dim,  1,   1, face,true),
       (idx_p,               float_type,  1,  1,   1, cell,true),
-      (idx_w,               float_type,  1,  1,   1, edge, true),
+      (idx_w,               float_type,  (Dim*2 - 3),  1,   1, edge, true), // scalar in 2D, 3-vector in 3D
       (idx_N,               float_type,  Dim,  1,   1, face, true), //local index for nonlinear term and forcing smeared entries
       (idx_cs,               float_type,  1,  1,   1, cell,true), //divergence of nonlinear term and forcing smeared, source term of discrete Pressure Poisson Equations
       (idx_u_g,             float_type,  Dim,  1,   1, face,true),
-      (idx_p_g,             float_type,  1,  1,   1, cell, true),  
-      (idx_w_g,             float_type,  1,  1,   1, edge, true),
+      (idx_p_g,             float_type,  1,  1,   1, cell, true),
+      (idx_w_g,             float_type,  (Dim*2 - 3),  1,   1, edge, true),
       (idx_N_g,             float_type,  Dim,  1,   1, face,true),
       (idx_cs_g,             float_type,  1,  1,   1, cell, true),  //global index across all processors
       //(d_i,                 float_type,  1,  1,  1,  cell,true),
@@ -99,7 +102,7 @@ class SetupNewton
       //(cell_aux_T,          float_type,  1,  1,  1,  cell,true),
       //(u_i_T,               float_type,  Dim,  1,  1,  face,true),
       //Fields for conjugate gradient
-      /*(conj_r_face_aux,         float_type,  Dim,  1,  1,  face,true),
+      (conj_r_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_p_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_Ap_face_aux,        float_type,  Dim,  1,  1,  face,true),
       (conj_Ax_face_aux,        float_type,  Dim,  1,  1,  face,true),
@@ -113,7 +116,7 @@ class SetupNewton
       (conj_s_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_rh_cell_aux,        float_type,  1,  1,  1,  cell,true),
       //(conj_As_cell_aux,         float_type,  1,  1,  1,  cell,true),
-      (conj_s_cell_aux,         float_type,  1,  1,  1,  cell,true),*/
+      (conj_s_cell_aux,         float_type,  1,  1,  1,  cell,true),
       //Tmp fields for the Conjugate gradient solve
       (r_i_tmp,             float_type,  Dim,  1,  1,  face,true),
       (cell_aux_tmp,        float_type,  1,  1,  1,  cell,true)
@@ -149,7 +152,7 @@ class SetupNewton
     using time_integration_t = solver::NewtonIteration<SetupNewton>;
     using linear_ns_t = solver::LinearNS<SetupNewton>;
     using linsys_solver_t = solver::LinSysSolver<SetupNewton>;
-    using stability_t = solver::Stability<SetupNewton>;
+    // using stability_t = solver::Stability<SetupNewton>;
 
   public: //Ctors
     SetupNewton(Dictionary* _d)

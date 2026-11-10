@@ -201,9 +201,11 @@ class sparse_mat
     {
         for (int i = 1; i < mat.size(); i++)
         {
-            for (const auto& [key, val] : mat[i])
+            for (auto it = mat[i].begin(); it != mat[i].end();)
             {
-                if (std::abs(val) < th_val) { mat[i].erase(key); }
+                if (std::abs(it->second) < th_val) it = mat[i].erase(it);
+                else
+                    ++it;
             }
         }
     }

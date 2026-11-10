@@ -1,0 +1,54 @@
+simulation_parameters
+{
+    // Tiny uniform 3D mesh for the lns3d assembly-verification harness.
+    nLevels=0;
+    global_refinement=0;
+
+    Ux=0.0;
+    Uy=0.0;
+    Uz=0.0;
+
+    Re=40.0;
+    R=0.5;
+    geometry=sphere;
+
+    // time-marching keys read by the shared SetupNewton / NewtonIteration ctor
+    source_max=13.0;
+    nBaseLevelTimeSteps=4;
+    cfl=0.4;
+    cfl_max=1000;
+    refinement_factor=0.125;
+    adapt_frequency=1000000000;
+    output_frequency=100000;
+    base_level_threshold=1e-4;
+    cg_threshold=1e-2;
+    cg_max_itr=40;
+    hard_max_refinement=true;
+    vortexType=0;
+    single_ring=true;
+    perturbation=false;
+    vDelta=0.2;
+    fat_ring=true;
+
+    p_set_zero=true;
+    Newton_max_itr=1;
+    Newton_threshold=1e-6;
+
+    output { directory=output; }
+
+    restart_write_frequency=1000000;
+    write_restart=false;
+    use_restart=false;
+    restart { load_directory=restart; save_directory=restart; }
+
+    domain
+    {
+        // cells; dx=0.25 -> 6 x 6 x 6 units interior
+        bd_base   = (-48,-48,-48);
+        bd_extent = (96,96,96);
+        dx_base=0.25;
+        block_extent=8;
+        block { base=(-24,-24,-24); extent=(48,48,48); }
+    }
+    EXP_LInf=1e-14;
+}
